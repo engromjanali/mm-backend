@@ -101,6 +101,7 @@ WSGI_APPLICATION = 'mm_backend.wsgi.application'
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
 DATABASE_URL = os.getenv('DATABASE_URL')
+IS_VERCEL = bool(os.getenv('VERCEL'))
 
 if DATABASE_URL:
     parsed_database_url = urlparse(DATABASE_URL)
@@ -116,9 +117,16 @@ if DATABASE_URL:
             'PASSWORD': unquote(parsed_database_url.password or ''),
             'HOST': parsed_database_url.hostname or '',
             'PORT': parsed_database_url.port or 6543,
-            'CONN_MAX_AGE': 60,
+            # Vercel functions are short-lived. Do not hold a database
+            # connection across invocations when using a Supabase pooler.
+            'CONN_MAX_AGE': int(
+                os.getenv('DATABASE_CONN_MAX_AGE', '0' if IS_VERCEL else '60')
+            ),
             'OPTIONS': {
                 'sslmode': query_options.get('sslmode', ['require'])[0],
+                'connect_timeout': int(
+                    os.getenv('DATABASE_CONNECT_TIMEOUT', '10')
+                ),
             },
         }
     }
