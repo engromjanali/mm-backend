@@ -75,10 +75,35 @@ WSGI_APPLICATION = 'mm_backend.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'django.db.backends.sqlite3',
+#         'NAME': BASE_DIR / 'db.sqlite3',
+#     }
+# }
+
+
+
+import os
+from dotenv import load_dotenv
+from urllib.parse import urlparse, parse_qsl
+
+load_dotenv()
+
+# Replace the DATABASES section of your settings.py with this
+db_Postgres = urlparse(os.getenv("DATABASE_URL"))
+
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': db_Postgres.path.lstrip('/'),
+        'USER': db_Postgres.username,
+        'PASSWORD': db_Postgres.password,
+        'HOST': db_Postgres.hostname,
+        'PORT': db_Postgres.port,
+        'OPTIONS': {
+            'sslmode': 'require',
+        },
     }
 }
 
