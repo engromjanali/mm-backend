@@ -7,11 +7,13 @@ from .views import (
     SignUpView,
     UpdateProfileView,
     testfunc,
+    config
 )
 
 app_name = "auth_management"
 
 urlpatterns = [
+    path('config', config, name='config'),
     path("test", testfunc, name="test"),
     path("sign-in", SignInView.as_view(), name="sign-in"),
     path("sign-up", SignUpView.as_view(), name="sign-up"),

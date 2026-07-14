@@ -27,6 +27,9 @@ User = get_user_model()
 def testfunc(request):
     return HttpResponse("this is a test api")
 
+def config(request):
+    return HttpResponse('version 1.0')
+
 
 def authentication_response(user, message):
     return {
