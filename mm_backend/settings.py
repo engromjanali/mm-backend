@@ -115,7 +115,7 @@ if DATABASE_URL:
             'USER': unquote(parsed_database_url.username or ''),
             'PASSWORD': unquote(parsed_database_url.password or ''),
             'HOST': parsed_database_url.hostname or '',
-            'PORT': parsed_database_url.port or 5432,
+            'PORT': parsed_database_url.port or 6543,
             'CONN_MAX_AGE': 60,
             'OPTIONS': {
                 'sslmode': query_options.get('sslmode', ['require'])[0],
