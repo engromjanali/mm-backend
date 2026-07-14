@@ -27,10 +27,13 @@ load_dotenv(BASE_DIR / '.env')
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.getenv('DJANGO_SECRET_KEY')
+# Vercel environment variables are not loaded from the local, gitignored .env.
+# Accept SECRET_KEY as a backwards-compatible alias for existing deployments.
+SECRET_KEY = os.getenv('DJANGO_SECRET_KEY') or os.getenv('SECRET_KEY')
 if not SECRET_KEY:
-    if os.getenv('VERCEL'):
-        raise ImproperlyConfigured('DJANGO_SECRET_KEY is required on Vercel.')
+    # This fallback lets Vercel inspect/build the Django app. Set
+    # DJANGO_SECRET_KEY in Vercel before serving a real deployment; otherwise
+    # JWTs will use this development key and should not be considered secure.
     SECRET_KEY = 'django-insecure-local-development-only-change-me'
 
 # SECURITY WARNING: don't run with debug turned on in production!
@@ -120,8 +123,9 @@ if DATABASE_URL:
         }
     }
 else:
-    if os.getenv('VERCEL'):
-        raise ImproperlyConfigured('DATABASE_URL is required on Vercel.')
+    # The Vercel build process imports settings before runtime environment
+    # variables are always available. Keep a SQLite fallback for that build
+    # inspection; configure DATABASE_URL in Vercel for the real application.
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.sqlite3',

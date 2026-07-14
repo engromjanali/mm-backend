@@ -17,6 +17,8 @@ Add these variables for Production and Preview deployments:
 - `DJANGO_SECRET_KEY`: a long, random, stable secret. Do not change it after users receive JWTs.
 - `DATABASE_URL`: the PostgreSQL connection URL, including `sslmode=require` when the provider requires TLS.
 
+The variable names must be added in the Vercel dashboard under **Project Settings → Environment Variables** (or with `vercel env add`); your local `.env` file is ignored by Git and is not deployed. `SECRET_KEY` is accepted as an alias, but `DJANGO_SECRET_KEY` is recommended.
+
 For a custom API domain, also add:
 
 - `DJANGO_ALLOWED_HOSTS=api.example.com`
