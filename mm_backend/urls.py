@@ -18,8 +18,14 @@ from django.contrib import admin
 from django.conf import settings
 from django.conf.urls.static import static
 from django.urls import path, include
+from django.http import HttpResponse
+
+
+def testfunc(request):
+    return HttpResponse("this is a test api")
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('',testfunc,name='test'),
     path('auth/v1/', include('AuthManagement.urls')),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
