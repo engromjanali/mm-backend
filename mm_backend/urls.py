@@ -27,5 +27,5 @@ def testfunc(request):
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('',testfunc,name='test'),
-    path('auth/v1/', include('AuthManagement.urls')),
+    path('api/v1/auth/', include('AuthManagement.urls')),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
