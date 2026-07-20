@@ -1,6 +1,13 @@
+asgiref==3.11.1
 Django==6.0.7
+django-cors-headers==4.9.0
 djangorestframework==3.17.1
+dotenv==0.9.9
+pillow==12.3.0
+psycopg==3.2.9
+psycopg-binary==3.2.9
+psycopg2==2.9.12
 PyJWT==2.13.0
-Pillow==12.3.0
-psycopg[binary]==3.2.9
 python-dotenv==1.2.2
+sqlparse==0.5.5
+typing_extensions==4.16.0
