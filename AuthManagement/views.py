@@ -5,11 +5,12 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.mail import send_mail
 from django.db import transaction
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from django.utils import timezone
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from django.views.decorators.csrf import csrf_exempt
 
 from .authentication import create_access_token
 from .models import PasswordResetOTP
@@ -27,10 +28,12 @@ User = get_user_model()
 def testfunc(request):
     return HttpResponse("this is a test api")
 
+@csrf_exempt
 def config(request):
-    return {
+    return JsonResponse({
+        "message": "API configuration",
         "version": "1.0.0",
-    }
+    })
 
 
 def authentication_response(user, message):
