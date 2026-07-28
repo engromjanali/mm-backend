@@ -30,4 +30,7 @@ urlpatterns = [
     path('api/v1/auth/', include('AuthManagement.urls')),
     path('api/v1/mess/', include('MessManagement.urls')),
     path('api/v1/cost/', include('CostManagement.urls')),
+    path('api/v1/meal/', include('MealManagement.urls')),
+    path('api/v1/fund/', include('FundManagement.urls')),
+    path('api/v1/deposit/', include('DepositManagement.urls')),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

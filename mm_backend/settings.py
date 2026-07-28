@@ -68,6 +68,9 @@ INSTALLED_APPS = [
     'AuthManagement',
     'MessManagement',
     'CostManagement',
+    'MealManagement',
+    'FundManagement',
+    'DepositManagement',
 ]
 
 MIDDLEWARE = [
