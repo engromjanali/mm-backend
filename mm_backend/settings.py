@@ -67,6 +67,7 @@ INSTALLED_APPS = [
     'rest_framework',
     'AuthManagement',
     'MessManagement',
+    'CostManagement',
 ]
 
 MIDDLEWARE = [

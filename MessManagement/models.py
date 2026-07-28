@@ -12,8 +12,8 @@ class Mess(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
 
-class MessSession(models.Model):
-    mess = models.ForeignKey(Mess, on_delete=models.CASCADE, related_name='sessions')
+class MessSeason(models.Model):
+    mess = models.ForeignKey(Mess, on_delete=models.CASCADE, related_name='seasons')
     name = models.CharField(max_length=100)
     start_date = models.DateField()
     end_date = models.DateField()
@@ -26,14 +26,14 @@ class MessSession(models.Model):
 class MessMemberShip(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='mess_memberships')
     mess = models.ForeignKey(Mess, on_delete=models.CASCADE, related_name='memberships')
-    session = models.ForeignKey(MessSession, on_delete=models.CASCADE, related_name='memberships')
+    season = models.ForeignKey(MessSeason, on_delete=models.CASCADE, related_name='memberships')
     status = models.CharField(max_length=20, choices=[('active', 'Active'), ('inactive', 'Inactive')], default='active')
     joined_at = models.DateTimeField(auto_now_add=True)
     left_at = models.DateTimeField(auto_now_add=True, blank=True, null=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        unique_together = ('user', 'mess', 'session')
+        unique_together = ('user', 'mess', 'season')
 
 
 

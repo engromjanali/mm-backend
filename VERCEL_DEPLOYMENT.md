@@ -19,7 +19,7 @@ Add these variables for Production and Preview deployments:
 
 The variable names must be added in the Vercel dashboard under **Project Settings → Environment Variables** (or with `vercel env add`); your local `.env` file is ignored by Git and is not deployed. `SECRET_KEY` is accepted as an alias, but `DJANGO_SECRET_KEY` is recommended.
 
-If Vercel logs `Cannot assign requested address` and shows an IPv6 database address, replace the deployed `DATABASE_URL`. For Supabase, copy the **Session pooler** or **Transaction pooler** connection string from the Supabase dashboard. It normally uses `*.pooler.supabase.com` on port `6543`. Do not use the direct `db.<project>.supabase.co:5432` URL from Vercel when that hostname resolves only to IPv6. Update the Vercel variable for every environment and redeploy.
+If Vercel logs `Cannot assign requested address` and shows an IPv6 database address, replace the deployed `DATABASE_URL`. For Supabase, copy the **Season pooler** or **Transaction pooler** connection string from the Supabase dashboard. It normally uses `*.pooler.supabase.com` on port `6543`. Do not use the direct `db.<project>.supabase.co:5432` URL from Vercel when that hostname resolves only to IPv6. Update the Vercel variable for every environment and redeploy.
 
 For a custom API domain, also add:
 

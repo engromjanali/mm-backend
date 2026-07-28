@@ -29,4 +29,5 @@ urlpatterns = [
     path('',testfunc,name='test'),
     path('api/v1/auth/', include('AuthManagement.urls')),
     path('api/v1/mess/', include('MessManagement.urls')),
+    path('api/v1/cost/', include('CostManagement.urls')),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
