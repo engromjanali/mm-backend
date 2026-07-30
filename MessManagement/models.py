@@ -6,8 +6,6 @@ class Mess(models.Model):
     email = models.EmailField(unique=False)
     phone = models.CharField(max_length=20, unique=False)
     address = models.CharField(max_length=255)
-    manager = models.OneToOneField(User, on_delete=models.CASCADE, related_name='managed_messes')
-    act_manager = models.OneToOneField(User, on_delete=models.CASCADE, related_name='active_messes', null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -16,7 +14,7 @@ class MessSeason(models.Model):
     mess = models.ForeignKey(Mess, on_delete=models.CASCADE, related_name='seasons')
     name = models.CharField(max_length=100)
     start_date = models.DateField()
-    end_date = models.DateField()
+    end_date = models.DateField(default=None,null=True,blank=True)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -25,11 +23,12 @@ class MessSeason(models.Model):
 
 class MessMemberShip(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='mess_memberships')
+    role = models.CharField(max_length=20, choices=[('manager', 'Manager'), ('member', 'Member'), ('acting_manager', 'Acting Manager')], default='member')    
     mess = models.ForeignKey(Mess, on_delete=models.CASCADE, related_name='memberships')
     season = models.ForeignKey(MessSeason, on_delete=models.CASCADE, related_name='memberships')
     status = models.CharField(max_length=20, choices=[('active', 'Active'), ('inactive', 'Inactive')], default='active')
     joined_at = models.DateTimeField(auto_now_add=True)
-    left_at = models.DateTimeField(auto_now_add=True, blank=True, null=True)
+    left_at = models.DateTimeField(default=None, blank=True, null=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
