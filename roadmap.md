@@ -16,6 +16,7 @@
 | Endpoint | Method | Status |
 |---|---|---|
 | `/api/v1/mess/create/` | POST | ✅ Done |
+| `/api/v1/mess/list` | GET | ✅ Done |
 | `/api/v1/mess/<id>/` | GET | 🔲 Planned |
 | `/api/v1/mess/<id>/update/` | PUT / PATCH | 🔲 Planned |
 | `/api/v1/mess/<id>/seasons/` | GET / POST | 🔲 Planned |
