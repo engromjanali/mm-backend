@@ -59,7 +59,29 @@ class MessMemberShipRequestSerializer(serializers.ModelSerializer):
             'requested_at', 'responded_at', 'response_message',
             'created_at', 'updated_at',
         ]
-        read_only_fields = ['id', 'requested_at', 'responded_at', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'user', 'status', 'requested_at', 'responded_at', 'created_at', 'updated_at']
+
+    def validate(self, attrs):
+        request = self.context.get('request')
+        if not request or not request.user:
+            raise serializers.ValidationError("Authentication credentials were not provided.")
+        
+        user = request.user
+        mess = attrs['mess']
+        
+        # Check if there is an existing pending request for the same user and mess
+        existing_pending = MessMemberShipRequest.objects.filter(
+            user=user,
+            mess=mess,
+            status='pending'
+        ).exists()
+        
+        if existing_pending:
+            raise serializers.ValidationError(
+                {"mess": "You already have a pending request to join this mess."}
+            )
+            
+        return attrs
 
 
 class MessMemberShipInvitationSerializer(serializers.ModelSerializer):

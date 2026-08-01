@@ -4,10 +4,11 @@ from django.http import JsonResponse
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 
-from .models import Mess
+from .models import Mess, MessMemberShipRequest
 from .serializers import (
     MessCreationSerializer,
     MessMemberShipSerializer,
+    MessMemberShipRequestSerializer,
     MessSeasonSerializer,
     MessSerializer,
 )
@@ -113,3 +114,17 @@ class MessListView(generics.ListAPIView):
             "total_size": total_size,
             "data": serializer.data
         })
+
+
+class MessJoinRequestView(generics.CreateAPIView):
+    """
+    POST /api/v1/mess/join/
+
+    Allows an authenticated user to submit a join request to a specific mess.
+    Automatically status is 'pending' by default and user is the logged-in user.
+    """
+    serializer_class = MessMemberShipRequestSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)

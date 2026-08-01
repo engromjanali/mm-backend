@@ -37,8 +37,8 @@ class MessMemberShip(models.Model):
 
 
 class MessMemberShipRequest(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='membership_requests')
-    mess = models.ForeignKey(Mess, on_delete=models.CASCADE, related_name='membership_requests')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='user_requests')
+    mess = models.ForeignKey(Mess, on_delete=models.CASCADE, related_name='mess_requests')
     status = models.CharField(max_length=20, choices=[('pending', 'Pending'), ('approved', 'Approved'), ('rejected', 'Rejected')], default='pending')
     requested_at = models.DateTimeField(auto_now_add=True)
     responded_at = models.DateTimeField(blank=True, null=True)
@@ -46,13 +46,11 @@ class MessMemberShipRequest(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
-    class Meta:
-        unique_together = ('user', 'mess')
-
+    
 
 class MessMemberShipInvitation(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='membership_invitations')
-    mess = models.ForeignKey(Mess, on_delete=models.CASCADE, related_name='membership_invitations')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='user_invitations')
+    mess = models.ForeignKey(Mess, on_delete=models.CASCADE, related_name='mess_invitations')
     status = models.CharField(max_length=20, choices=[('pending', 'Pending'), ('accepted', 'Accepted'), ('declined', 'Declined')], default='pending')
     invited_at = models.DateTimeField(auto_now_add=True)
     responded_at = models.DateTimeField(blank=True, null=True)
@@ -60,8 +58,6 @@ class MessMemberShipInvitation(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
-    class Meta:
-        unique_together = ('user', 'mess')
 
 
 
