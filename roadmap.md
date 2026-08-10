@@ -24,6 +24,7 @@
 | `/api/v1/mess/<id>/membership-requests/` | GET / POST | 🔲 Planned |
 | `/api/v1/mess/<id>/invitations/` | GET / POST | 🔲 Planned |
 | `/api/v1/mess/<id>/notices/` | GET / POST | 🔲 Planned |
+| `/api/v1/season/start-new-season` | POST | ✅ Done |
 
 ---
 

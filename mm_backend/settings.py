@@ -128,6 +128,11 @@ CORS_ALLOW_HEADERS = [
     "user-agent",
     "x-csrftoken",
     "x-requested-with",
+    # Mess context headers sent by the client on season-scoped endpoints.
+    "season-id",
+    "season_id",
+    "membership-id",
+    "membership_id",
 ]
 
 # Database

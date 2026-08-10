@@ -11,6 +11,7 @@ from .serializers import (
     MessMemberShipRequestSerializer,
     MessSeasonSerializer,
     MessSerializer,
+    StartNewSeasonSerializer,
 )
 
 
@@ -128,3 +129,34 @@ class MessJoinRequestView(generics.CreateAPIView):
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
+
+
+class StartNewSeasonView(generics.CreateAPIView):
+    """
+    POST /api/v1/season/start-new-season
+
+    Closes the mess' latest season and opens a new one, migrating every
+    member of the closing season who has not left.  The caller must send
+    `season_id` and `membership_id` headers identifying an active manager
+    membership of that latest season.
+
+    Optional body: {"name": "...", "start_date": "YYYY-MM-DD"}
+    """
+    serializer_class = StartNewSeasonSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        result = serializer.save()
+
+        return Response(
+            {
+                "message": "New season started successfully.",
+                "previous_season": MessSeasonSerializer(result['previous_season']).data,
+                "season": MessSeasonSerializer(result['season']).data,
+                "migrated_members_count": len(result['memberships']),
+                "memberships": MessMemberShipSerializer(result['memberships'], many=True).data,
+            },
+            status=status.HTTP_201_CREATED,
+        )
