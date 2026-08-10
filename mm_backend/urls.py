@@ -29,6 +29,7 @@ urlpatterns = [
     path('',testfunc,name='test'),
     path('api/v1/auth/', include('AuthManagement.urls')),
     path('api/v1/mess/', include('MessManagement.urls')),
+    path('api/v1/season/', include('MessManagement.season_urls')),
     path('api/v1/cost/', include('CostManagement.urls')),
     path('api/v1/meal/', include('MealManagement.urls')),
     path('api/v1/fund/', include('FundManagement.urls')),
