@@ -17,13 +17,26 @@
 |---|---|---|
 | `/api/v1/mess/create/` | POST | ✅ Done |
 | `/api/v1/mess/list` | GET | ✅ Done |
+| `/api/v1/mess/join/` | POST | ✅ Done |
 | `/api/v1/mess/<id>/` | GET | 🔲 Planned |
 | `/api/v1/mess/<id>/update/` | PUT / PATCH | 🔲 Planned |
 | `/api/v1/mess/<id>/seasons/` | GET / POST | 🔲 Planned |
 | `/api/v1/mess/<id>/members/` | GET | 🔲 Planned |
 | `/api/v1/mess/<id>/membership-requests/` | GET / POST | 🔲 Planned |
 | `/api/v1/mess/<id>/invitations/` | GET / POST | 🔲 Planned |
-| `/api/v1/mess/<id>/notices/` | GET / POST | 🔲 Planned |
+
+---
+
+## 3. NoticeManagement
+| Endpoint | Method | Status |
+|---|---|---|
+| `/api/v1/notice/create` | POST | ✅ Done |
+| `/api/v1/notice/update` | PUT / PATCH / POST | ✅ Done |
+| `/api/v1/notice/delete` | DELETE / POST | ✅ Done |
+| `/api/v1/notice/list` | GET | ✅ Done |
+| `/api/v1/notice/{id}` | GET | ✅ Done |
+| `/api/v1/notice/pin` | GET | ✅ Done |
+| `/api/v1/notice/set-pined-notice` | POST | ✅ Done |
 
 ---
 
