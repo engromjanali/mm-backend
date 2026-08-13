@@ -7,6 +7,7 @@
 | `/api/v1/auth/sign-in` | POST | ✅ Done |
 | `/api/v1/auth/forgot-password` | POST | ✅ Done |
 | `/api/v1/auth/change-password` | POST | ✅ Done |
+| `/api/v1/auth/profile` | GET | ✅ Done |
 | `/api/v1/auth/update-profile` | GET / PUT / PATCH | ✅ Done |
 | `/api/v1/auth/config` | GET | ✅ Done |
 

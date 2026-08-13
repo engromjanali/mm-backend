@@ -146,6 +146,19 @@ class ChangePasswordView(APIView):
         return Response({"message": "Password changed successfully."})
 
 
+class ProfileView(generics.RetrieveAPIView):
+    """
+    GET /api/v1/auth/profile
+
+    Returns the signed-in user's profile.
+    """
+    serializer_class = UserProfileSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_object(self):
+        return self.request.user
+
+
 class UpdateProfileView(generics.RetrieveUpdateAPIView):
     serializer_class = UserProfileSerializer
     permission_classes = [permissions.IsAuthenticated]
