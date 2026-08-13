@@ -45,9 +45,16 @@
 ## 3. MealManagement
 | Endpoint | Method | Status |
 |---|---|---|
-| `/api/v1/meal/create/` | POST | 🔲 Planned |
-| `/api/v1/meal/<id>/` | GET / PUT / DELETE | 🔲 Planned |
-| `/api/v1/meal/season/<season_id>/` | GET | 🔲 Planned |
+| `/api/v1/meal/add` | POST | ✅ Done |
+| `/api/v1/meal/update` | PUT / PATCH / POST | ✅ Done |
+| `/api/v1/meal/delete` | DELETE / POST | ✅ Done |
+| `/api/v1/meal/list` | GET | ✅ Done |
+| `/api/v1/meal/list-all` | GET | ✅ Done |
+| `/api/v1/meal/{id}` | GET | ✅ Done |
+
+Writes (`add` / `update` / `delete`) are Manager / Acting Manager only.
+`list` returns the caller's own meals; `list-all` returns every member's.
+Both accept `?date=DD-MM-YYYY` or `?start_date=…&end_date=…`.
 
 ---
 

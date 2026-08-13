@@ -229,7 +229,7 @@ REST_FRAMEWORK = {
 JWT_ALGORITHM = 'HS256'
 # Short-lived access token; clients swap the refresh token for a new one
 # through /api/v1/auth/refresh-token when it expires.
-JWT_ACCESS_TOKEN_LIFETIME = timedelta(minutes=1)
+JWT_ACCESS_TOKEN_LIFETIME = timedelta(hours=24)
 JWT_REFRESH_TOKEN_LIFETIME = timedelta(days=30)
 PASSWORD_RESET_OTP_LIFETIME_MINUTES = 10
 
