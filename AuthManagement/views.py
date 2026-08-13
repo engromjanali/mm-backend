@@ -12,11 +12,17 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.views.decorators.csrf import csrf_exempt
 
-from .authentication import create_access_token
+from .authentication import (
+    REFRESH_TOKEN,
+    create_access_token,
+    create_refresh_token,
+    resolve_token_user,
+)
 from .models import PasswordResetOTP
 from .serializers import (
     ChangePasswordSerializer,
     ForgotPasswordSerializer,
+    RefreshTokenSerializer,
     SignInSerializer,
     SignUpSerializer,
     UserProfileSerializer,
@@ -40,8 +46,10 @@ def authentication_response(user, message):
     return {
         "message": message,
         "access_token": create_access_token(user),
+        "refresh_token": create_refresh_token(user),
         "token_type": "Bearer",
         "expires_in": int(settings.JWT_ACCESS_TOKEN_LIFETIME.total_seconds()),
+        "refresh_expires_in": int(settings.JWT_REFRESH_TOKEN_LIFETIME.total_seconds()),
         "user": UserProfileSerializer(user).data,
     }
 
@@ -68,6 +76,38 @@ class SignInView(APIView):
         serializer.is_valid(raise_exception=True)
         user = serializer.validated_data["user"]
         return Response(authentication_response(user, "Signed in successfully."))
+
+
+class RefreshTokenView(APIView):
+    """
+    POST /api/v1/auth/refresh-token
+
+    Body: {"refresh_token": "..."}
+
+    Swaps a valid refresh token for a fresh access token.  A new refresh
+    token is issued alongside it, so an app in daily use never has to make
+    the user sign in again.  Expired, tampered-with, or access tokens sent
+    here are rejected with 401.
+    """
+    permission_classes = [permissions.AllowAny]
+    # No authenticator: a client refreshing usually still carries its expired
+    # access token in the Authorization header, and that must not fail the
+    # request before the refresh token is even read.
+    authentication_classes = []
+
+    def get_authenticate_header(self, request):
+        # Without this, DRF would render token failures raised inside the
+        # view as 403 instead of 401, since there is no authenticator to
+        # supply the WWW-Authenticate header.
+        return "Bearer"
+
+    def post(self, request):
+        serializer = RefreshTokenSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user, _ = resolve_token_user(
+            serializer.validated_data["refresh_token"], REFRESH_TOKEN
+        )
+        return Response(authentication_response(user, "Token refreshed successfully."))
 
 
 class ForgotPasswordView(APIView):

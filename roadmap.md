@@ -5,6 +5,7 @@
 |---|---|---|
 | `/api/v1/auth/sign-up` | POST | ✅ Done |
 | `/api/v1/auth/sign-in` | POST | ✅ Done |
+| `/api/v1/auth/refresh-token` | POST | ✅ Done |
 | `/api/v1/auth/forgot-password` | POST | ✅ Done |
 | `/api/v1/auth/change-password` | POST | ✅ Done |
 | `/api/v1/auth/profile` | GET | ✅ Done |

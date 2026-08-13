@@ -174,6 +174,16 @@ class ForgotPasswordSerializer(AliasInputMixin, serializers.Serializer):
         return attrs
 
 
+class RefreshTokenSerializer(AliasInputMixin, serializers.Serializer):
+    input_aliases = {
+        "refresh": "refresh_token",
+        "Refresh": "refresh_token",
+        "refresh-token": "refresh_token",
+        "refreshToken": "refresh_token",
+    }
+    refresh_token = serializers.CharField()
+
+
 class ChangePasswordSerializer(AliasInputMixin, serializers.Serializer):
     input_aliases = {"OTP": "otp", "Password": "password"}
     otp = serializers.RegexField(regex=r"^\d{6}$")
