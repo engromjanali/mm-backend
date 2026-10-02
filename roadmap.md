@@ -65,12 +65,12 @@ Positive `amount` = credit, negative = debit. A manager is also a member, so the
 
 ---
 
-## 2c. Funds (active season)
-Shared mess money, not tied to a member. Positive `amount` = credit, negative = debit. Every member (manager included) reads; only the manager / acting manager writes.
+## 2c. Funds (whole mess)
+Shared mess money, not tied to a member. Belongs to the mess, not a season — it carries over when a new season starts. Positive `amount` = credit, negative = debit. Every member (manager included) reads; only the manager / acting manager writes.
 
 | Endpoint | Method | Status |
 |---|---|---|
-| `/api/v1/user/funds?date=&start_date=&end_date=` (list + totals + `season_balance`) | GET | ✅ Done |
+| `/api/v1/user/funds?date=&start_date=&end_date=` (list + totals + overall `balance`) | GET | ✅ Done |
 | `/api/v1/admin/funds` | POST | ✅ Done |
 | `/api/v1/admin/funds/<id>` | PATCH / DELETE | ✅ Done |
 

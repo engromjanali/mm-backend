@@ -14,8 +14,7 @@ class FundAPITests(APITestCase):
         invite = self.client.post('/api/v1/admin/invites', {'user_id': self.alice.id}, format='json').data
         self.client.force_authenticate(user=self.alice)
         self.client.post('/api/v1/user/invites/accept', {'invite_code': invite['invite_code']}, format='json')
-        self.season = MessMemberShip.objects.get(user=self.manager).season
-        self.today = self.season.start_date.isoformat()
+        self.today = MessMemberShip.objects.get(user=self.manager).season.start_date.isoformat()
 
     def add(self, amount, **extra):
         self.client.force_authenticate(user=self.manager)
@@ -46,20 +45,20 @@ class FundAPITests(APITestCase):
         self.add('300')
         self.assertEqual(self.client.get('/api/v1/user/funds').data['summary']['entries'], 1)
 
-    def test_list_filters_totals_and_season_balance(self):
+    def test_list_filters_totals_and_balance(self):
         self.add('1000')
         self.add('-300')
 
         everything = self.client.get('/api/v1/user/funds').data
         self.assertEqual(everything['summary'], {'credit': 1000.0, 'debit': 300.0, 'net': 700.0, 'entries': 2})
-        self.assertEqual(everything['season_balance'], 700.0)
+        self.assertEqual(everything['balance'], 700.0)
 
         same_day = self.client.get('/api/v1/user/funds', {'date': self.today}).data
         self.assertEqual(same_day['summary']['entries'], 2)
 
         old_range = self.client.get('/api/v1/user/funds', {'start_date': '01-01-2000', 'end_date': '02-01-2000'}).data
         self.assertEqual(old_range['data'], [])
-        self.assertEqual(old_range['season_balance'], 700.0)
+        self.assertEqual(old_range['balance'], 700.0)
 
         bad_range = self.client.get('/api/v1/user/funds', {'start_date': '02-01-2000', 'end_date': '01-01-2000'})
         self.assertEqual(bad_range.status_code, 400)
@@ -74,10 +73,24 @@ class FundAPITests(APITestCase):
         self.assertFalse(Fund.objects.exists())
         self.assertEqual(self.client.delete(f'/api/v1/admin/funds/{fund_id}').status_code, 404)
 
-    def test_date_outside_season_gives_a_specific_error(self):
+    def test_fund_belongs_to_the_mess_and_carries_over_to_a_new_season(self):
+        fund_id = self.add('1000').data['id']
+        self.assertEqual(self.client.post('/api/v1/admin/seasons', {'name': 'August 2026'}, format='json').status_code, 201)
+
+        self.client.force_authenticate(user=self.alice)
+        listing = self.client.get('/api/v1/user/funds').data
+        self.assertEqual([f['id'] for f in listing['data']], [fund_id])
+        self.assertEqual(listing['balance'], 1000.0)
+
+        self.client.force_authenticate(user=self.manager)
+        self.assertEqual(self.client.patch(f'/api/v1/admin/funds/{fund_id}', {'amount': '-50'}, format='json').status_code, 200)
+        self.assertEqual(self.add('200').status_code, 201)
+        self.assertEqual(self.client.get('/api/v1/user/funds').data['balance'], 150.0)
+
+    def test_any_date_is_accepted_even_before_the_season(self):
         response = self.add('100', date='01-01-2000')
-        self.assertEqual(response.status_code, 400)
-        self.assertIn('before the season started', str(response.data['date']))
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(response.data['date'], '2000-01-01')
 
     def test_funds_are_isolated_per_mess(self):
         fund_id = self.add('100').data['id']
