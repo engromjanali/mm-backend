@@ -1,6 +1,4 @@
 from django.contrib import admin
-from .models import FundsBreakdown, Funds
-# Register your models here.
+from .models import Fund
 
-admin.site.register(FundsBreakdown)
-admin.site.register(Funds)
+admin.site.register(Fund)

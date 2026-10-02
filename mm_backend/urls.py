@@ -32,6 +32,8 @@ urlpatterns = [
     path('api/v1/admin/', include('MessManagement.admin_urls')),
     path('api/v1/user/', include('DepositManagement.user_urls')),
     path('api/v1/admin/', include('DepositManagement.admin_urls')),
+    path('api/v1/user/', include('FundManagement.user_urls')),
+    path('api/v1/admin/', include('FundManagement.admin_urls')),
     path('api/v1/mess/', include('MessManagement.urls')),
     path('api/v1/notice/', include('MessManagement.notice_urls')),
     path('api/v1/cost/', include('CostManagement.urls')),

@@ -1,3 +1,6 @@
+from decimal import Decimal
+
+from django.db.models import Count, Q, Sum
 from rest_framework.exceptions import PermissionDenied
 from .models import MessMemberShip, MessSeason
 
@@ -61,3 +64,18 @@ def get_active_membership(user):
         .order_by('-joined_at')
         .first()
     )
+
+
+def signed_amount_summary(queryset):
+    """
+    Credit / debit / net / entries over a queryset with a signed ``amount``
+    (positive = credit, negative = debit), in one query. Used by deposits and funds.
+    """
+    totals = queryset.aggregate(
+        credit=Sum('amount', filter=Q(amount__gt=0)),
+        debit=Sum('amount', filter=Q(amount__lt=0)),
+        entries=Count('id'),
+    )
+    credit = totals['credit'] or Decimal('0')
+    debit = -(totals['debit'] or Decimal('0'))
+    return {"credit": float(credit), "debit": float(debit), "net": float(credit - debit), "entries": totals['entries']}

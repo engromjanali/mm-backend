@@ -16,10 +16,10 @@ from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from MealManagement.utils import DATE_INPUT_FORMATS, parse_date_value
+from MealManagement.utils import DATE_INPUT_FORMATS, parse_date_value, validate_date_in_season
 from MessManagement.membership_views import get_managed_membership
 from MessManagement.models import MessMemberShip
-from MessManagement.utils import get_active_membership
+from MessManagement.utils import get_active_membership, signed_amount_summary
 from .models import Deposit
 
 ZERO = Decimal('0')
@@ -40,18 +40,6 @@ def deposit_json(deposit):
     }
 
 
-def summarize(queryset):
-    """Credit / debit / net / entries over a deposit queryset (one DB query)."""
-    totals = queryset.aggregate(
-        credit=Sum('amount', filter=Q(amount__gt=0)),
-        debit=Sum('amount', filter=Q(amount__lt=0)),
-        entries=Count('id'),
-    )
-    credit = totals['credit'] or ZERO
-    debit = -(totals['debit'] or ZERO)
-    return {"credit": float(credit), "debit": float(debit), "net": float(credit - debit), "entries": totals['entries']}
-
-
 def season_deposits(season):
     return Deposit.objects.select_related('performed_by__user', 'recorded_by__user').filter(season=season)
 
@@ -66,12 +54,6 @@ class DepositWriteSerializer(serializers.Serializer):
     def validate_amount(self, value):
         if value == 0:
             raise serializers.ValidationError("Amount can't be zero. Use a positive amount for credit, negative for debit.")
-        return value
-
-    def validate_date(self, value):
-        season = self.context['season']
-        if value < season.start_date or (season.end_date and value > season.end_date):
-            raise serializers.ValidationError("Date must be inside the current season.")
         return value
 
 
@@ -92,7 +74,7 @@ class MyDepositListView(APIView):
         if not membership:
             raise ValidationError({"detail": "You are not connected to an active mess."})
         deposits = season_deposits(membership.season).filter(performed_by=membership)
-        return Response({"data": [deposit_json(d) for d in deposits], "summary": summarize(deposits)})
+        return Response({"data": [deposit_json(d) for d in deposits], "summary": signed_amount_summary(deposits)})
 
 
 # ---------------------------------------------------------------------------
@@ -127,13 +109,15 @@ class AdminDepositListCreateView(APIView):
         if end:
             deposits = deposits.filter(date__lte=end)
 
-        return Response({"data": [deposit_json(d) for d in deposits], "summary": summarize(deposits)})
+        return Response({"data": [deposit_json(d) for d in deposits], "summary": signed_amount_summary(deposits)})
 
     def post(self, request):
         manager = get_managed_membership(request.user)
-        serializer = DepositWriteSerializer(data=request.data, context={'season': manager.season})
+        serializer = DepositWriteSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
+        if 'date' in data:
+            validate_date_in_season(data['date'], manager.season)
         if 'member_id' not in data:
             raise ValidationError({"member_id": "This field is required."})
         member = MessMemberShip.objects.filter(
@@ -170,9 +154,11 @@ class AdminDepositDetailView(APIView):
 
     def patch(self, request, pk):
         manager, deposit = self._get(request, pk)
-        serializer = DepositWriteSerializer(data=request.data, partial=True, context={'season': manager.season})
+        serializer = DepositWriteSerializer(data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
+        if 'date' in data:
+            validate_date_in_season(data['date'], manager.season)
         if 'amount' in data:
             deposit.amount = data['amount']
         if 'date' in data:
@@ -224,7 +210,7 @@ class AdminDepositSummaryView(APIView):
 
         return Response({
             "season": {"id": manager.season_id, "name": manager.season.name},
-            "summary": {**summarize(deposits), "members": len(balances), "active_members": sum(1 for b in balances if b['entries'])},
+            "summary": {**signed_amount_summary(deposits), "members": len(balances), "active_members": sum(1 for b in balances if b['entries'])},
             "member_balances": balances,
-            "mine": summarize(deposits.filter(performed_by=manager)),
+            "mine": signed_amount_summary(deposits.filter(performed_by=manager)),
         })
