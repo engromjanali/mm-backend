@@ -53,6 +53,18 @@ Manager & acting manager are stored on `Mess`; a member's role is derived from i
 
 ---
 
+## 2b. Deposits (active season)
+Positive `amount` = credit, negative = debit. A manager is also a member, so they appear in member lists/totals and have their own deposits.
+
+| Endpoint | Method | Status |
+|---|---|---|
+| `/api/v1/user/deposits` (my deposits + totals) | GET | ✅ Done |
+| `/api/v1/admin/deposits?member_id=&date=&start=&end=` | GET / POST | ✅ Done |
+| `/api/v1/admin/deposits/<id>` | PATCH / DELETE | ✅ Done |
+| `/api/v1/admin/deposits/summary` (mess totals, member balances, mine) | GET | ✅ Done |
+
+---
+
 ## 3. NoticeManagement
 | Endpoint | Method | Status |
 |---|---|---|
