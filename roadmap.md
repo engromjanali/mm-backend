@@ -105,12 +105,14 @@ Both accept `?date=DD-MM-YYYY` or `?start_date=…&end_date=…`.
 
 ---
 
-## 4. CostManagement
+## 4. CostManagement (active season)
+A shopping (bazar) entry: the member who shopped, date + time, and product / price rows; its total is the sum of the prices. Every member (manager included) reads; only the manager / acting manager writes. A new season starts with an empty list.
+
 | Endpoint | Method | Status |
 |---|---|---|
-| `/api/v1/cost/create/` | POST | 🔲 Planned |
-| `/api/v1/cost/<id>/` | GET / PUT / DELETE | 🔲 Planned |
-| `/api/v1/cost/season/<season_id>/` | GET | 🔲 Planned |
+| `/api/v1/user/costs` (season + list + totals) | GET | ✅ Done |
+| `/api/v1/admin/costs` | POST | ✅ Done |
+| `/api/v1/admin/costs/<id>` (`items` replaces every product) | PATCH / DELETE | ✅ Done |
 
 ---
 
