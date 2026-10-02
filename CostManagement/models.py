@@ -12,6 +12,9 @@ class Cost(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    class Meta:
+        db_table = 'costs'
+
 
 class CostBreakdown(models.Model):
     cost = models.ForeignKey(Cost, on_delete=models.CASCADE, related_name='breakdowns')
@@ -19,6 +22,9 @@ class CostBreakdown(models.Model):
     quantity = models.PositiveIntegerField()
     unit_price = models.DecimalField(max_digits=10, decimal_places=2)
     total_amount = models.DecimalField(max_digits=10, decimal_places=2)
+
+    class Meta:
+        db_table = 'cost_breakdowns'
 
 
 

@@ -247,7 +247,7 @@ class MealListAllView(APIView):
         # Per-member roll-up across the whole filtered range, not just this page.
         member_totals = (
             queryset
-            .values('mess_member_id', 'mess_member__user__full_name', 'mess_member__role')
+            .values('mess_member_id', 'mess_member__user__full_name', 'mess_member__user_id')
             .annotate(
                 breakfast=Sum('breakfast'),
                 lunch=Sum('lunch'),
@@ -267,7 +267,7 @@ class MealListAllView(APIView):
                 {
                     "membership_id": row['mess_member_id'],
                     "member_name": row['mess_member__user__full_name'],
-                    "member_role": row['mess_member__role'],
+                    "member_role": membership.mess.role_of(row['mess_member__user_id']),
                     "breakfast": row['breakfast'] or 0,
                     "lunch": row['lunch'] or 0,
                     "dinner": row['dinner'] or 0,

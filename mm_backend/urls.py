@@ -28,6 +28,8 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('',testfunc,name='test'),
     path('api/v1/auth/', include('AuthManagement.urls')),
+    path('api/v1/user/', include('MessManagement.user_urls')),
+    path('api/v1/admin/', include('MessManagement.admin_urls')),
     path('api/v1/mess/', include('MessManagement.urls')),
     path('api/v1/notice/', include('MessManagement.notice_urls')),
     path('api/v1/cost/', include('CostManagement.urls')),

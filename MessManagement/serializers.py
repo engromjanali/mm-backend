@@ -131,6 +131,7 @@ class MessCreationSerializer(serializers.Serializer):
                 email=validated_data['email'],
                 phone=validated_data['phone'],
                 address=validated_data['address'],
+                manager=user,
             )
 
             # 2. Create the first Season (with end_date left empty until the season is closed)
@@ -148,7 +149,6 @@ class MessCreationSerializer(serializers.Serializer):
                 user=user,
                 mess=mess,
                 season=season,
-                role='manager',
                 status='active',
             )
 

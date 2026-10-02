@@ -29,6 +29,30 @@
 
 ---
 
+## 2a. Membership (user / admin)
+Manager & acting manager are stored on `Mess`; a member's role is derived from it. Users join a mess only through a membership in its active season.
+
+| Endpoint | Method | Status |
+|---|---|---|
+| `/api/v1/user/messes` (public) | GET | ✅ Done |
+| `/api/v1/user/messes/create` | POST | ✅ Done |
+| `/api/v1/user/membership/status` | GET | ✅ Done |
+| `/api/v1/user/membership/leave` | POST | ✅ Done |
+| `/api/v1/user/join-requests` | POST | ✅ Done |
+| `/api/v1/user/join-requests/<id>` | DELETE | ✅ Done |
+| `/api/v1/user/invites/accept` | POST | ✅ Done |
+| `/api/v1/user/invites/decline` | POST | ✅ Done |
+| `/api/v1/admin/member-lookup` | GET | ✅ Done |
+| `/api/v1/admin/invites` | GET / POST / DELETE | ✅ Done |
+| `/api/v1/admin/join-requests` | GET | ✅ Done |
+| `/api/v1/admin/join-requests/decision` | POST | ✅ Done |
+| `/api/v1/admin/members` | GET | ✅ Done |
+| `/api/v1/admin/seasons` | GET / POST (new season, carries members) | ✅ Done |
+| `/api/v1/admin/mess` (details / update) | GET / PATCH | 🔲 Planned |
+| `/api/v1/admin/mess/leadership` (transfer manager) | POST | 🔲 Planned |
+
+---
+
 ## 3. NoticeManagement
 | Endpoint | Method | Status |
 |---|---|---|

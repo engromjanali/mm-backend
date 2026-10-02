@@ -10,7 +10,8 @@ class AliasInputMixin:
     input_aliases = {}
 
     def to_internal_value(self, data):
-        data = data.copy()
+        # Shallow copy: QueryDict.copy() deep-copies, which fails for uploaded temp files.
+        data = {key: data.get(key) for key in data} if hasattr(data, "getlist") else dict(data)
         for alias, field in self.input_aliases.items():
             if alias in data and field not in data:
                 data[field] = data[alias]
@@ -37,11 +38,19 @@ class UserProfileSerializer(AliasInputMixin, serializers.ModelSerializer):
     long = serializers.DecimalField(
         source="longitude", max_digits=10, decimal_places=7, required=False, allow_null=True
     )
+    # Mess of the user's membership in an active season; null means join or create one.
+    active_mess_id = serializers.SerializerMethodField()
 
     class Meta:
         model = User
-        fields = ["id", "photo", "full_name", "email", "phone", "password", "address", "lat", "long"]
+        fields = ["id", "photo", "full_name", "email", "phone", "password", "address", "lat", "long", "active_mess_id"]
         read_only_fields = ["id"]
+
+    def get_active_mess_id(self, obj):
+        from MessManagement.utils import get_active_membership
+
+        membership = get_active_membership(obj)
+        return membership.mess_id if membership else None
 
     def validate_password(self, value):
         user = self.instance
@@ -81,11 +90,15 @@ class UserProfileSerializer(AliasInputMixin, serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         password = validated_data.pop("password", None)
+        old_photo = instance.photo.name if "photo" in validated_data and instance.photo else None
         for field, value in validated_data.items():
             setattr(instance, field, value)
         if password:
             instance.set_password(password)
         instance.save()
+        # Remove the replaced photo from storage (Cloudinary) so it doesn't pile up.
+        if old_photo and old_photo != (instance.photo.name if instance.photo else None):
+            instance.photo.storage.delete(old_photo)
         return instance
 
 

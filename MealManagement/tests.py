@@ -29,13 +29,15 @@ class MealApiTests(TestCase):
             email='member@test.com', phone='0172222222', full_name='Member Moe', password='pass12345',
         )
 
+        self.mess.manager = self.manager_user
+        self.mess.save()
         self.manager = MessMemberShip.objects.create(
             user=self.manager_user, mess=self.mess, season=self.season,
-            role='manager', status='active',
+            status='active',
         )
         self.member = MessMemberShip.objects.create(
             user=self.member_user, mess=self.mess, season=self.season,
-            role='member', status='active',
+            status='active',
         )
 
     def auth(self, membership):
@@ -95,7 +97,7 @@ class MealApiTests(TestCase):
             user=User.objects.create_user(
                 email='out@test.com', phone='0173333333', full_name='Out Olu', password='pass12345',
             ),
-            mess=other_mess, season=other_season, role='member', status='active',
+            mess=other_mess, season=other_season, status='active',
         )
         headers = self.auth(self.manager)
         response = self.client.post(

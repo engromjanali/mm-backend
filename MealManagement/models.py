@@ -16,6 +16,7 @@ class Meals(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        db_table = 'meals'
         # One meal sheet row per member per day within a season.
         unique_together = ('mess_season', 'mess_member', 'date')
         ordering = ['-date', '-id']

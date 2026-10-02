@@ -57,6 +57,9 @@ class User(AbstractBaseUser, PermissionsMixin):
     def __str__(self):
         return self.email
 
+    class Meta:
+        db_table = 'users'
+
 
 class PasswordResetOTP(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="password_reset_otps")
@@ -66,6 +69,7 @@ class PasswordResetOTP(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        db_table = 'password_reset_otps'
         ordering = ["-created_at"]
 
     @staticmethod

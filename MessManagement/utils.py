@@ -50,3 +50,14 @@ def get_verified_membership_and_season(request, require_write=False):
         raise PermissionDenied("Only Manager or Acting Manager can perform this write operation.")
 
     return membership, season
+
+
+def get_active_membership(user):
+    """The user's membership in the active season of a mess, or ``None``."""
+    return (
+        MessMemberShip.objects
+        .select_related('mess', 'season')
+        .filter(user=user, status='active', left_at__isnull=True, season__is_active=True)
+        .order_by('-joined_at')
+        .first()
+    )

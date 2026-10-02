@@ -12,9 +12,15 @@ class FundsBreakdown(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    class Meta:
+        db_table = 'fund_breakdowns'
+
 
 class Funds(models.Model):
     mess = models.OneToOneField(Mess, on_delete=models.CASCADE, related_name='funds_mess')
     funds = models.ForeignKey(FundsBreakdown, on_delete=models.CASCADE, related_name='funds_breakdown')
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'funds'
