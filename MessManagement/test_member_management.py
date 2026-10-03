@@ -1,3 +1,4 @@
+from django.utils import timezone
 from rest_framework.test import APITestCase
 
 from AuthManagement.models import User
@@ -53,6 +54,14 @@ class MemberManagementAPITests(APITestCase):
         self.assertRejected(self.act('enable', self.alice_m), 'Alice is already active.')
         self.as_user(self.alice)
         self.assertEqual(self.client.get('/api/v1/user/mess').status_code, 200)
+
+    def test_members_who_left_are_listed_only_on_request(self):
+        self.bob_m.left_at = timezone.now()
+        self.bob_m.status = 'inactive'
+        self.bob_m.save()
+        self.assertNotIn('Bob', [m['name'] for m in self.client.get('/api/v1/admin/members').data])
+        listed = {m['name']: m['state'] for m in self.client.get('/api/v1/admin/members?include_left=true').data}
+        self.assertEqual(listed, {'Alice': 'active', 'Bob': 'left', 'Manager Mia': 'active'})
 
     def test_disable_guards(self):
         self.assertRejected(self.act('disable', self.manager_m), "You can't disable yourself.")

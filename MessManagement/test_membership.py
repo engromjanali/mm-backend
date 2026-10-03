@@ -105,7 +105,7 @@ class MembershipFlowTests(APITestCase):
         self.create_mess()
         invite = self.client.post('/api/v1/admin/invites', {'user_id': self.bob.id}, format='json').data
         self.assertEqual(self.client.delete('/api/v1/admin/invites', {'invite_id': invite['id']}, format='json').status_code, 200)
-        self.assertEqual(self.client.get('/api/v1/admin/invites').data, [])
+        self.assertEqual([i['status'] for i in self.client.get('/api/v1/admin/invites').data], ['revoked'])
 
     # -- seasons --------------------------------------------------------------
 
