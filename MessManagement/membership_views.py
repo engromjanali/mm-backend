@@ -96,14 +96,19 @@ def membership_summary(membership, current_id=None):
 
 
 def admin_member_json(membership):
-    """A season member as the manager sees them; ``disabled`` = turned off by a manager."""
+    """
+    A season member as the manager sees them; ``disabled`` = turned off by a
+    manager, ``state`` = ``active`` / ``disabled`` / ``left``.
+    """
     return {
         **user_summary(membership.user),
         "membership_id": membership.id,
         "role": membership.role,
         "status": membership.status,
+        "state": membership_state(membership),
         "disabled": membership.status != 'active' and membership.left_at is None,
         "joined_at": membership.joined_at,
+        "left_at": membership.left_at,
     }
 
 
@@ -156,6 +161,10 @@ def int_param(request, name, default):
     except (TypeError, ValueError):
         return default
     return value if value > 0 else default
+
+
+def bool_param(request, name):
+    return request.query_params.get(name, '').lower() in ('1', 'true', 'yes')
 
 
 # ---------------------------------------------------------------------------
@@ -535,18 +544,20 @@ class AdminJoinRequestDecisionView(APIView):
 
 class AdminMemberListView(APIView):
     """
-    GET /api/v1/admin/members?include_disabled=true
+    GET /api/v1/admin/members?include_disabled=true&include_left=true
 
     Active members of the current season; with ``include_disabled`` also the
-    members a manager disabled (members who left are never listed).
+    members a manager disabled, with ``include_left`` also the members who left.
     """
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
         membership = get_managed_membership(request.user)
-        members = MessMemberShip.objects.select_related('user', 'mess').filter(season=membership.season, left_at__isnull=True)
-        if request.query_params.get('include_disabled', '').lower() not in ('1', 'true', 'yes'):
-            members = members.filter(status='active')
+        members = MessMemberShip.objects.select_related('user', 'mess').filter(season=membership.season)
+        if not bool_param(request, 'include_left'):
+            members = members.filter(left_at__isnull=True)
+        if not bool_param(request, 'include_disabled'):
+            members = members.filter(Q(status='active') | Q(left_at__isnull=False))
         return Response([admin_member_json(m) for m in members.order_by('user__full_name')])
 
 
