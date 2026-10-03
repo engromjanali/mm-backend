@@ -98,8 +98,8 @@ class MessMemberShipInvitationSerializer(serializers.ModelSerializer):
 class NoticesSerializer(serializers.ModelSerializer):
     class Meta:
         model = Notices
-        fields = ['id', 'mess', 'title', 'content', 'is_pinned', 'created_at', 'updated_at']
-        read_only_fields = ['id', 'created_at', 'updated_at']
+        fields = ['id', 'season', 'title', 'content', 'is_pinned', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'season', 'created_at', 'updated_at']
 
 
 # ---------------------------------------------------------------------------

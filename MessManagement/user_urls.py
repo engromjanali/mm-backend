@@ -8,6 +8,7 @@ from .membership_views import (
     MembershipStatusView,
     PublicMessListView,
 )
+from .notice_views import NoticeListView
 
 urlpatterns = [
     path('messes', PublicMessListView.as_view(), name='user-messes'),
@@ -18,4 +19,5 @@ urlpatterns = [
     path('join-requests/<int:pk>', JoinRequestView.as_view(), name='user-join-request-cancel'),
     path('invites/accept', InviteResponseView.as_view(accept=True), name='user-invite-accept'),
     path('invites/decline', InviteResponseView.as_view(accept=False), name='user-invite-decline'),
+    path('notices', NoticeListView.as_view(), name='user-notices'),
 ]

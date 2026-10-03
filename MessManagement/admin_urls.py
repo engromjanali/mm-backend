@@ -8,6 +8,7 @@ from .membership_views import (
     AdminSeasonView,
     MemberLookupView,
 )
+from .notice_views import AdminNoticeCreateView, AdminNoticeDetailView, AdminNoticePinView
 
 urlpatterns = [
     path('member-lookup', MemberLookupView.as_view(), name='admin-member-lookup'),
@@ -16,4 +17,7 @@ urlpatterns = [
     path('join-requests/decision', AdminJoinRequestDecisionView.as_view(), name='admin-join-request-decision'),
     path('members', AdminMemberListView.as_view(), name='admin-members'),
     path('seasons', AdminSeasonView.as_view(), name='admin-seasons'),
+    path('notices', AdminNoticeCreateView.as_view(), name='admin-notices'),
+    path('notices/<int:pk>', AdminNoticeDetailView.as_view(), name='admin-notice-detail'),
+    path('notices/<int:pk>/pin', AdminNoticePinView.as_view(), name='admin-notice-pin'),
 ]

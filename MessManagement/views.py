@@ -140,7 +140,7 @@ class MessJoinRequestView(generics.CreateAPIView):
 class NoticeCreateView(APIView):
     """
     POST /api/v1/notice/create
-    Creates a new notice for the mess associated with the user's active membership & session.
+    Creates a new notice in the season from the `Session-ID` header.
     Requires Manager or Acting Manager role.
     """
     permission_classes = [permissions.IsAuthenticated]
@@ -152,8 +152,8 @@ class NoticeCreateView(APIView):
         if serializer.is_valid():
             is_pinned = serializer.validated_data.get('is_pinned', False)
             if is_pinned:
-                Notices.objects.filter(mess=membership.mess, is_pinned=True).update(is_pinned=False)
-            notice = serializer.save(mess=membership.mess)
+                Notices.objects.filter(season=season, is_pinned=True).update(is_pinned=False)
+            notice = serializer.save(season=season)
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -161,7 +161,7 @@ class NoticeCreateView(APIView):
 class NoticeUpdateView(APIView):
     """
     PUT/PATCH/POST /api/v1/notice/update or /api/v1/notice/update/<int:pk>/
-    Updates an existing notice for the mess.
+    Updates an existing notice of the `Session-ID` season.
     Requires Manager or Acting Manager role.
     """
     permission_classes = [permissions.IsAuthenticated]
@@ -173,14 +173,14 @@ class NoticeUpdateView(APIView):
             return Response({"error": "Notice ID is required."}, status=status.HTTP_400_BAD_REQUEST)
         
         try:
-            notice = Notices.objects.get(id=notice_id, mess=membership.mess)
+            notice = Notices.objects.get(id=notice_id, season=season)
         except Notices.DoesNotExist:
-            return Response({"error": "Notice not found in your mess."}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"error": "Notice not found in this season."}, status=status.HTTP_404_NOT_FOUND)
 
         serializer = NoticesSerializer(notice, data=request.data, partial=partial)
         if serializer.is_valid():
             if serializer.validated_data.get('is_pinned', False):
-                Notices.objects.filter(mess=membership.mess, is_pinned=True).exclude(id=notice.id).update(is_pinned=False)
+                Notices.objects.filter(season=season, is_pinned=True).exclude(id=notice.id).update(is_pinned=False)
             notice = serializer.save()
             return Response(serializer.data, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -210,9 +210,9 @@ class NoticeDeleteView(APIView):
             return Response({"error": "Notice ID is required."}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            notice = Notices.objects.get(id=notice_id, mess=membership.mess)
+            notice = Notices.objects.get(id=notice_id, season=season)
         except Notices.DoesNotExist:
-            return Response({"error": "Notice not found in your mess."}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"error": "Notice not found in this season."}, status=status.HTTP_404_NOT_FOUND)
 
         notice.delete()
         return Response({"message": "Notice deleted successfully."}, status=status.HTTP_200_OK)
@@ -227,14 +227,14 @@ class NoticeDeleteView(APIView):
 class NoticeListView(APIView):
     """
     GET /api/v1/notice/list
-    Lists all notices for the authenticated user's mess with limit & offset pagination.
+    Lists the notices of the `Session-ID` season (pinned first, then newest) with limit & offset pagination.
     Accessible to all active members of the mess.
     """
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, *args, **kwargs):
         membership, season = get_verified_membership_and_season(request, require_write=False)
-        queryset = Notices.objects.filter(mess=membership.mess).order_by('-created_at')
+        queryset = Notices.objects.filter(season=season)
 
         total_size = queryset.count()
 
@@ -275,9 +275,9 @@ class NoticeDetailView(APIView):
     def get(self, request, pk, *args, **kwargs):
         membership, season = get_verified_membership_and_season(request, require_write=False)
         try:
-            notice = Notices.objects.get(id=pk, mess=membership.mess)
+            notice = Notices.objects.get(id=pk, season=season)
         except Notices.DoesNotExist:
-            return Response({"error": "Notice not found in your mess."}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"error": "Notice not found in this season."}, status=status.HTTP_404_NOT_FOUND)
 
         serializer = NoticesSerializer(notice)
         return Response(serializer.data, status=status.HTTP_200_OK)
@@ -286,14 +286,14 @@ class NoticeDetailView(APIView):
 class NoticePinnedView(APIView):
     """
     GET /api/v1/notice/pin
-    Retrieves the currently pinned notice for the mess.
+    Retrieves the currently pinned notice of the `Session-ID` season.
     Accessible to all active members of the mess.
     """
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, *args, **kwargs):
         membership, season = get_verified_membership_and_season(request, require_write=False)
-        pinned_notice = Notices.objects.filter(mess=membership.mess, is_pinned=True).first()
+        pinned_notice = Notices.objects.filter(season=season, is_pinned=True).first()
 
         if not pinned_notice:
             return Response({"message": "No pinned notice found", "data": None}, status=status.HTTP_200_OK)
@@ -305,7 +305,7 @@ class NoticePinnedView(APIView):
 class NoticeSetPinnedView(APIView):
     """
     POST /api/v1/notice/set-pined-notice
-    Pins a specific notice and unpins any previously pinned notice in the mess.
+    Pins a specific notice and unpins any previously pinned notice in the season.
     Requires Manager or Acting Manager role.
     """
     permission_classes = [permissions.IsAuthenticated]
@@ -318,12 +318,12 @@ class NoticeSetPinnedView(APIView):
             return Response({"error": "notice_id is required."}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            notice = Notices.objects.get(id=notice_id, mess=membership.mess)
+            notice = Notices.objects.get(id=notice_id, season=season)
         except Notices.DoesNotExist:
-            return Response({"error": "Notice not found in your mess."}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"error": "Notice not found in this season."}, status=status.HTTP_404_NOT_FOUND)
 
         # Unpin any currently pinned notice in this mess
-        Notices.objects.filter(mess=membership.mess, is_pinned=True).update(is_pinned=False)
+        Notices.objects.filter(season=season, is_pinned=True).update(is_pinned=False)
 
         notice.is_pinned = True
         notice.save()

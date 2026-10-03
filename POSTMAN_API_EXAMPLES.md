@@ -143,6 +143,44 @@ Returns a paginated list of join requests for a mess.
 
 ---
 
+## 2b. Notice Board APIs (user / admin)
+
+Scoped to the caller's **active season** through their membership (no
+`Membership-ID` / `Session-ID` headers). Like deposits and costs, notices belong
+to a season, so a new season starts with an empty board. At most one notice per
+season is pinned.
+
+Notice shape: `{"id", "title", "description", "pinned", "created_at", "updated_at"}`.
+
+### List Notices
+**`GET {base_url}/api/v1/user/notices`** — any member, the manager included.
+
+Returns `{"data": [notice, ...]}`, pinned first, then newest.
+`400` `You are not connected to an active mess.` when the caller has none.
+
+### Publish Notice (manager)
+**`POST {base_url}/api/v1/admin/notices`**
+```json
+{"title": "Water off", "description": "No water from 2 to 4 pm.", "pinned": false}
+```
+`201` with the notice. Title (max 200) and description (max 2000) are trimmed
+and required; `pinned: true` unpins the current pinned notice.
+
+### Edit Notice (manager)
+**`PATCH {base_url}/api/v1/admin/notices/{id}`** `{"title"?, "description"?}` → `200` notice.
+
+### Pin / Unpin Notice (manager)
+**`POST {base_url}/api/v1/admin/notices/{id}/pin`** `{"pinned": true}` → `200` notice.
+Pinning unpins any other notice; `409` if another pin wins a race.
+
+### Delete Notice (manager)
+**`DELETE {base_url}/api/v1/admin/notices/{id}`** → `200` `{"message": "Notice deleted."}`.
+
+Errors: `403` for non-managers, `404` `Notice not found in the current season. It may have been deleted.`,
+`400` field errors such as `{"title": ["Title can't be empty."]}`.
+
+---
+
 ## 3. Meal APIs
 
 All meal endpoints are scoped by the two headers below — the mess comes from
