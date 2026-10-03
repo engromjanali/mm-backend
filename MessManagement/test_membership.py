@@ -30,9 +30,13 @@ class MembershipFlowTests(APITestCase):
         profile = self.client.get('/api/v1/auth/profile')
         self.assertEqual(profile.data['active_mess_id'], mess.id)
 
-    def test_cannot_create_second_mess_while_connected(self):
+    def test_manager_can_create_a_second_mess_which_becomes_current(self):
         self.create_mess()
-        self.assertEqual(self.create_mess(name='Other').status_code, 400)
+        response = self.create_mess(name='Other')
+        self.assertEqual(response.status_code, 201, response.data)
+        status_data = self.client.get('/api/v1/user/membership/status').data
+        self.assertEqual(status_data['current']['mess_name'], 'Other')
+        self.assertEqual(sorted(m['mess_name'] for m in status_data['memberships']), ['Green House', 'Other'])
 
     # -- public list ----------------------------------------------------------
 
@@ -101,7 +105,7 @@ class MembershipFlowTests(APITestCase):
         self.create_mess()
         invite = self.client.post('/api/v1/admin/invites', {'user_id': self.bob.id}, format='json').data
         self.assertEqual(self.client.delete('/api/v1/admin/invites', {'invite_id': invite['id']}, format='json').status_code, 200)
-        self.assertEqual(self.client.get('/api/v1/admin/invites').data, [])
+        self.assertEqual([i['status'] for i in self.client.get('/api/v1/admin/invites').data], ['revoked'])
 
     # -- seasons --------------------------------------------------------------
 

@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from django.db.models import Count, Q, Sum
+from django.db.models import Count, Q, Subquery, Sum
 from rest_framework.exceptions import PermissionDenied
 from .models import MessMemberShip, MessSeason
 
@@ -55,15 +55,37 @@ def get_verified_membership_and_season(request, require_write=False):
     return membership, season
 
 
+def usable_memberships(user):
+    """Memberships the user can work in: not left and not disabled by a manager."""
+    return MessMemberShip.objects.select_related('mess', 'season').filter(user=user, status='active', left_at__isnull=True)
+
+
 def get_active_membership(user):
-    """The user's membership in the active season of a mess, or ``None``."""
-    return (
-        MessMemberShip.objects
-        .select_related('mess', 'season')
-        .filter(user=user, status='active', left_at__isnull=True, season__is_active=True)
-        .order_by('-joined_at')
-        .first()
-    )
+    """
+    The user's current membership, or ``None``.
+
+    A user may belong to several messes (one membership per season). The
+    current one is the membership they chose (``User.current_membership``)
+    while it's still usable; otherwise their newest usable membership, which
+    is then saved as current so the choice stays stable.
+    """
+    memberships = usable_memberships(user)
+    # Read the saved choice from the database, not the (possibly stale) user object.
+    saved = type(user).objects.filter(pk=user.pk).values('current_membership')[:1]
+    current = memberships.filter(pk=Subquery(saved)).first()
+    if current:
+        user.current_membership_id = current.id
+        return current
+    fallback = memberships.order_by('-season__start_date', '-season_id', '-joined_at').first()
+    set_current_membership(user, fallback)
+    return fallback
+
+
+def set_current_membership(user, membership):
+    """Saves [membership] (or None) as the user's current membership."""
+    membership_id = membership.id if membership else None
+    type(user).objects.filter(pk=user.pk).update(current_membership=membership_id)
+    user.current_membership_id = membership_id
 
 
 def signed_amount_summary(queryset):
