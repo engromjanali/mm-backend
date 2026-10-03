@@ -67,7 +67,8 @@ class MessMemberShip(models.Model):
 class MessMemberShipRequest(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='user_requests')
     mess = models.ForeignKey(Mess, on_delete=models.CASCADE, related_name='mess_requests')
-    status = models.CharField(max_length=20, choices=[('pending', 'Pending'), ('approved', 'Approved'), ('rejected', 'Rejected')], default='pending')
+    # `cancelled` = withdrawn by the user (or made moot when they joined by invite).
+    status = models.CharField(max_length=20, choices=[('pending', 'Pending'), ('approved', 'Approved'), ('rejected', 'Rejected'), ('cancelled', 'Cancelled')], default='pending')
     requested_at = models.DateTimeField(auto_now_add=True)
     responded_at = models.DateTimeField(blank=True, null=True)
     response_message = models.TextField(blank=True, null=True)

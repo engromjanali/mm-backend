@@ -143,6 +143,76 @@ Returns a paginated list of join requests for a mess.
 
 ---
 
+## 1a. Memberships & Switching
+
+A user can belong to several messes — at most one membership per season. The
+membership saved as **current** on their profile decides which mess and season
+every `/api/v1/user/...` and `/api/v1/admin/...` endpoint uses. If it's no
+longer usable (left or disabled), the newest usable membership becomes current.
+Creating a mess or accepting an invite makes the new membership current;
+starting a new season moves members from the old season's membership to the new one.
+Older seasons stay editable: switch to their membership to work in them.
+
+### Membership Status
+**`GET {base_url}/api/v1/user/membership/status`** — `current`, `memberships`
+(every mess and season, each with `status` `active|disabled|left`, `is_current`,
+`can_switch`, `role`, season dates), `history` (`memberships` without the
+current one), `pending_requests` and `invites`.
+
+### Switch Current Membership
+**`POST {base_url}/api/v1/user/membership/switch`** `{"membership_id": 12}` →
+`200 {"message": "Switched to Green House (July 2026).", "current": {...}}`.
+Errors: `404` `Membership not found.`; `400` `You left Green House (July 2026), so it
+can't be your current membership.` / `Your membership in … was disabled by its manager.`
+
+Joining a mess you're already in is refused (`You're already a member of Green House.`).
+
+---
+
+## 1b. My Mess API
+
+### Current Mess Details
+**`GET {base_url}/api/v1/user/mess`** — any member, the manager included; scoped to the caller's active season.
+
+**Response `200`:**
+```json
+{
+    "id": 1, "name": "Green House", "address": "Mirpur 10", "email": "", "phone": "",
+    "created_at": "2026-07-01T10:00:00Z",
+    "season": {"id": 3, "name": "July 2026", "start_date": "2026-07-01", "end_date": null},
+    "my_role": "member", "joined_at": "2026-07-03T09:00:00Z",
+    "manager": {"user_id": 1, "name": "Manager Mia", "email": "manager@test.com", "phone": "01711111111"},
+    "acting_manager": null,
+    "members": [{"membership_id": 5, "user_id": 1, "name": "Manager Mia", "role": "manager", "joined_at": "2026-07-01T10:00:00Z"}],
+    "stats": {"members": 3, "total_meals": 5.0, "meal_rate": 100.0, "total_cost": 500.0, "total_deposit": 1700.0, "fund_balance": 800.0},
+    "permissions": {"can_edit": false, "can_transfer": false, "can_leave": true}
+}
+```
+`members` lists the season's active members (manager, acting manager, then by name).
+`stats` cover the active season, except `fund_balance`, which spans every season.
+`400` `You are not connected to an active mess.` when the caller has none.
+
+---
+
+## 1c. Member Management APIs (admin)
+
+Scoped to the manager's active season; `<id>` is a `membership_id` from the members list.
+Each action returns `200 {"message": "..."}`; errors are `{"detail": "..."}`.
+
+| Endpoint | Who | What |
+|---|---|---|
+| `GET /api/v1/admin/members?include_disabled=true` | manager / acting manager | Season members; each has `disabled` (members who left are never listed) |
+| `POST /api/v1/admin/members/<id>/disable` | manager / acting manager | Member loses access until enabled; records stay. Disabling the acting manager removes that role |
+| `POST /api/v1/admin/members/<id>/enable` | manager / acting manager | Gives access back (fails if they joined another mess) |
+| `POST /api/v1/admin/members/<id>/acting-manager` | primary manager | Make acting manager (the previous one becomes a member) |
+| `DELETE /api/v1/admin/members/<id>/acting-manager` | primary manager | Remove the acting manager role |
+| `POST /api/v1/admin/members/<id>/transfer-ownership` | primary manager | Member becomes the primary manager; the caller becomes a regular member |
+
+Rules: you can't disable yourself or the primary manager; leadership goes only to active
+members; `404` `Member not found in the current season.`; `403` `Only the primary manager can change the mess leadership.`
+
+---
+
 ## 2b. Notice Board APIs (user / admin)
 
 Scoped to the caller's **active season** through their membership (no

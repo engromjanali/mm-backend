@@ -48,6 +48,11 @@ class User(AbstractBaseUser, PermissionsMixin):
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
     date_joined = models.DateTimeField(default=timezone.now)
+    # The membership the user chose to work in (one per season, any number of
+    # messes). Null or no longer usable → the newest usable one is used.
+    current_membership = models.ForeignKey(
+        'MessManagement.MessMemberShip', on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+    )
 
     objects = UserManager()
 
