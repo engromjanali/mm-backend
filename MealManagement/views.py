@@ -1,16 +1,34 @@
-from django.db.models import Sum
+from decimal import Decimal
+
+from django.db import IntegrityError, transaction
+from django.db.models import Q, Sum
 from rest_framework import permissions, status
+from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from MessManagement.utils import get_verified_membership_and_season
+from MessManagement.membership_views import get_managed_membership
+from MessManagement.models import MessMemberShip
+from MessManagement.utils import get_active_membership, get_verified_membership_and_season
 from .models import Meals
-from .serializers import MealsSerializer, MealWriteSerializer
+from .serializers import (
+    AdminMealBulkSerializer,
+    AdminMealItemSerializer,
+    AdminMealKeySerializer,
+    AdminMealUpdateSerializer,
+    MealsSerializer,
+    MealWriteSerializer,
+)
 from .utils import (
     DATE_OUTPUT_FORMAT,
+    MEAL_SLOTS,
+    MealConflict,
     apply_date_filters,
     get_pagination_params,
     parse_date_value,
+    season_meal_rate,
+    validate_has_meal,
+    validate_meal_date,
 )
 
 
@@ -80,6 +98,10 @@ def _resolve_meal(request, membership, season, pk=None):
         )
     return meal, None
 
+
+# ---------------------------------------------------------------------------
+# Session-header endpoints  (/api/v1/meal/...)  — `Membership-ID` + `Session-ID`
+# ---------------------------------------------------------------------------
 
 class MealAddView(APIView):
     """
@@ -303,3 +325,253 @@ class MealDetailView(APIView):
             )
 
         return Response(MealsSerializer(meal).data, status=status.HTTP_200_OK)
+
+
+# ---------------------------------------------------------------------------
+# User endpoints  (/api/v1/user/...)
+# ---------------------------------------------------------------------------
+
+class MyMealListView(APIView):
+    """
+    GET /api/v1/user/meals
+
+    The caller's own meals in their active season (a manager is a member too),
+    with the season's meal rate and the caller's totals.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        membership = get_active_membership(request.user)
+        if not membership:
+            raise ValidationError({"detail": "You are not connected to an active mess."})
+        season = membership.season
+        meals = Meals.objects.filter(mess_season=season, mess_member=membership)
+        meal_rate, _, _ = season_meal_rate(season)
+        my_total = meals.aggregate(total=Sum('total_meals'))['total'] or Decimal('0')
+
+        return Response({
+            "season": {"id": season.id, "name": season.name},
+            "user_name": request.user.full_name,
+            "meal_rate": float(meal_rate),
+            "summary": {
+                "total_meals": float(my_total),
+                "meal_cost": float((my_total * meal_rate).quantize(Decimal('0.01'))),
+                "days": meals.count(),
+            },
+            "days": [
+                {
+                    "date": meal.date.isoformat(),
+                    "breakfast": float(meal.breakfast),
+                    "lunch": float(meal.lunch),
+                    "dinner": float(meal.dinner),
+                    "total": float(meal.total_meals),
+                }
+                for meal in meals
+            ],
+        })
+
+
+# ---------------------------------------------------------------------------
+# Admin endpoints  (/api/v1/admin/...)  — manager / acting manager only
+# ---------------------------------------------------------------------------
+
+def _day(date_value):
+    return date_value.strftime(DATE_OUTPUT_FORMAT)
+
+
+def _is_active(member):
+    return member.status == 'active' and member.left_at is None
+
+
+def _season_member(season, member_id):
+    return MessMemberShip.objects.select_related('user', 'mess').filter(id=member_id, season=season).first()
+
+
+def _admin_member(season, member_id, field='member_id', require_active=False):
+    """The season member ``member_id`` points at; active only when adding meals."""
+    member = _season_member(season, member_id)
+    if not member:
+        raise ValidationError({field: "No member with this ID in the current season."})
+    if require_active and not _is_active(member):
+        raise ValidationError({field: f"{member.user.full_name} is no longer an active member of this season."})
+    return member
+
+
+def _admin_meal(season, member, date_value):
+    meal = Meals.objects.filter(mess_season=season, mess_member=member, date=date_value).first()
+    if not meal:
+        raise NotFound(f"{member.user.full_name} has no meal on {_day(date_value)}.")
+    return meal
+
+
+def _first_error(errors):
+    """First readable message of a serializer's errors, naming bare required fields."""
+    field, messages = next(iter(errors.items()))
+    message = str(messages[0] if isinstance(messages, list) else messages)
+    return f"{field} is required." if message == "This field is required." else message
+
+
+def _admin_meal_json(meal):
+    return {
+        "id": meal.id,
+        "member_id": meal.mess_member_id,
+        "member_name": meal.mess_member.user.full_name,
+        "date": meal.date.isoformat(),
+        "breakfast": float(meal.breakfast),
+        "lunch": float(meal.lunch),
+        "dinner": float(meal.dinner),
+        "total": float(meal.total_meals),
+    }
+
+
+def _admin_meal_payload(season, mutation=None, message=None):
+    """
+    Everything the manage-meals view needs: the season's members (the manager
+    included, plus anyone who left but still has meals), the meal rate
+    (season cost ÷ season meals) and every meal record of the season.
+    """
+    meals = Meals.objects.select_related('mess_member__user').filter(mess_season=season)
+    members = (
+        MessMemberShip.objects.select_related('user', 'mess')
+        .filter(season=season)
+        .filter(Q(status='active', left_at__isnull=True) | Q(meals__mess_season=season))
+        .distinct()
+        .order_by('user__full_name')
+    )
+    meal_rate, total_meals, total_cost = season_meal_rate(season)
+
+    payload = {
+        "season": {"id": season.id, "name": season.name},
+        "members": [
+            {"id": m.id, "name": m.user.full_name, "role": m.role, "active": _is_active(m)}
+            for m in members
+        ],
+        "meal_rate": float(meal_rate),
+        "summary": {"total_meals": float(total_meals), "total_cost": float(total_cost), "entries": meals.count()},
+        "entries": [_admin_meal_json(meal) for meal in meals],
+    }
+    if mutation:
+        payload["mutation"] = mutation
+    if message:
+        payload["message"] = message
+    return payload
+
+
+class AdminMealView(APIView):
+    """
+    GET    /api/v1/admin/meals
+           Members, meal rate and every meal record of the active season.
+    PATCH  /api/v1/admin/meals  {member_id, date, breakfast?, lunch?, dinner?}
+           Change a member's meal on a date (the date itself can't change).
+    DELETE /api/v1/admin/meals  {member_id, date}  (body or query params)
+
+    Writes return the same payload as GET plus ``mutation`` and ``message``.
+    New meals are added a day at a time with ``POST /api/v1/admin/meals/bulk``.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        manager = get_managed_membership(request.user)
+        return Response(_admin_meal_payload(manager.season))
+
+    def patch(self, request):
+        manager = get_managed_membership(request.user)
+        serializer = AdminMealUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        if not any(slot in data for slot in MEAL_SLOTS):
+            raise ValidationError({"detail": "Send breakfast, lunch or dinner to update."})
+
+        member = _admin_member(manager.season, data['member_id'])
+        meal = _admin_meal(manager.season, member, data['date'])
+        counts = {slot: data.get(slot, getattr(meal, slot)) for slot in MEAL_SLOTS}
+        validate_has_meal(counts, "A meal can't be all zero. Delete it instead.")
+
+        for slot, value in counts.items():
+            setattr(meal, slot, value)
+        meal.save()
+        return Response(_admin_meal_payload(
+            manager.season,
+            mutation={"action": "update", "created_count": 0, "updated_count": 1},
+            message=f"Meal updated for {member.user.full_name} on {_day(meal.date)}.",
+        ))
+
+    def delete(self, request):
+        manager = get_managed_membership(request.user)
+        serializer = AdminMealKeySerializer(data=request.data or request.query_params)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        member = _admin_member(manager.season, data['member_id'])
+        meal = _admin_meal(manager.season, member, data['date'])
+        meal.delete()
+        return Response(_admin_meal_payload(
+            manager.season,
+            mutation={"action": "delete", "created_count": 0, "updated_count": 0},
+            message=f"Meal deleted for {member.user.full_name} on {_day(data['date'])}.",
+        ))
+
+
+class AdminMealBulkView(APIView):
+    """
+    POST /api/v1/admin/meals/bulk
+         {date, meals: [{member_id, breakfast, lunch, dinner}, ...]}
+
+    Adds a day's meals for the listed members in one transaction — all rows
+    or none. Add-only: a day that already has meals is rejected with 409 and
+    edited per record instead.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        manager = get_managed_membership(request.user)
+        season = manager.season
+        serializer = AdminMealBulkSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        date_value = validate_meal_date(serializer.validated_data['date'], season)
+
+        rows = []
+        seen = set()
+        for index, raw in enumerate(serializer.validated_data['meals'], start=1):
+            if not isinstance(raw, dict):
+                raise ValidationError({"meals": f"Row {index} must be an object with member_id, breakfast, lunch and dinner."})
+            item = AdminMealItemSerializer(data=raw)
+            if not item.is_valid():
+                raise ValidationError({"meals": f"Row {index}: {_first_error(item.errors)}"})
+            data = item.validated_data
+
+            member = _season_member(season, data['member_id'])
+            if not member:
+                raise ValidationError({"meals": f"Row {index}: no member with ID {data['member_id']} in the current season."})
+            name = member.user.full_name
+            if not _is_active(member):
+                raise ValidationError({"meals": f"{name} is no longer an active member of this season."})
+            if member.id in seen:
+                raise ValidationError({"meals": f"{name} is listed more than once."})
+            seen.add(member.id)
+
+            counts = {slot: data.get(slot, Decimal('0')) for slot in MEAL_SLOTS}
+            validate_has_meal(counts, f"Add at least one meal for {name}.")
+            rows.append((member, counts))
+
+        already_added = MealConflict(f"Meals for {_day(date_value)} are already added. Edit them from Manage meals.")
+        if Meals.objects.filter(mess_season=season, date=date_value).exists():
+            raise already_added
+        try:
+            with transaction.atomic():
+                for member, counts in rows:
+                    # save() (not bulk_create) so total_meals is derived per row.
+                    Meals(mess_season=season, mess_member=member, date=date_value, **counts).save()
+        except IntegrityError:
+            # Another request added this day between the check and the insert.
+            raise already_added
+
+        count = len(rows)
+        return Response(
+            _admin_meal_payload(
+                season,
+                mutation={"action": "add", "created_count": count, "updated_count": 0},
+                message=f"Meal added for {count} member{'s' if count != 1 else ''} on {_day(date_value)}.",
+            ),
+            status=status.HTTP_201_CREATED,
+        )

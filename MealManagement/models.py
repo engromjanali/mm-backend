@@ -8,10 +8,11 @@ class Meals(models.Model):
     mess_season = models.ForeignKey(MessSeason, on_delete=models.CASCADE, related_name='meals')
     mess_member = models.ForeignKey(MessMemberShip, on_delete=models.CASCADE, related_name='meals')
     date = models.DateField()
-    breakfast = models.IntegerField(default=0, validators=[MinValueValidator(0)])
-    lunch = models.IntegerField(default=0, validators=[MinValueValidator(0)])
-    dinner = models.IntegerField(default=0, validators=[MinValueValidator(0)])
-    total_meals = models.IntegerField(default=0)
+    # Half meals are allowed (0.5 steps), so counts are one-decimal values.
+    breakfast = models.DecimalField(max_digits=3, decimal_places=1, default=0, validators=[MinValueValidator(0)])
+    lunch = models.DecimalField(max_digits=3, decimal_places=1, default=0, validators=[MinValueValidator(0)])
+    dinner = models.DecimalField(max_digits=3, decimal_places=1, default=0, validators=[MinValueValidator(0)])
+    total_meals = models.DecimalField(max_digits=4, decimal_places=1, default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

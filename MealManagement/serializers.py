@@ -2,7 +2,7 @@ from rest_framework import serializers
 
 from MessManagement.models import MessMemberShip
 from .models import Meals
-from .utils import DATE_INPUT_FORMATS, DATE_OUTPUT_FORMAT, validate_date_in_season
+from .utils import DATE_INPUT_FORMATS, DATE_OUTPUT_FORMAT, validate_date_in_season, validate_meal_count
 
 
 class MealsSerializer(serializers.ModelSerializer):
@@ -15,6 +15,11 @@ class MealsSerializer(serializers.ModelSerializer):
     membership_id = serializers.IntegerField(source='mess_member_id', read_only=True)
     member_name = serializers.CharField(source='mess_member.user.full_name', read_only=True)
     member_role = serializers.CharField(source='mess_member.role', read_only=True)
+    # Numbers (not DRF's default decimal strings) so clients read 1.5 directly.
+    breakfast = serializers.DecimalField(max_digits=3, decimal_places=1, coerce_to_string=False, read_only=True)
+    lunch = serializers.DecimalField(max_digits=3, decimal_places=1, coerce_to_string=False, read_only=True)
+    dinner = serializers.DecimalField(max_digits=3, decimal_places=1, coerce_to_string=False, read_only=True)
+    total_meals = serializers.DecimalField(max_digits=4, decimal_places=1, coerce_to_string=False, read_only=True)
 
     class Meta:
         model = Meals
@@ -37,9 +42,9 @@ class MealWriteSerializer(serializers.ModelSerializer):
     """
     membership_id = serializers.IntegerField()
     date = serializers.DateField(input_formats=DATE_INPUT_FORMATS, format=DATE_OUTPUT_FORMAT)
-    breakfast = serializers.IntegerField(min_value=0, required=False, default=0)
-    lunch = serializers.IntegerField(min_value=0, required=False, default=0)
-    dinner = serializers.IntegerField(min_value=0, required=False, default=0)
+    breakfast = serializers.DecimalField(max_digits=3, decimal_places=1, required=False, default=0)
+    lunch = serializers.DecimalField(max_digits=3, decimal_places=1, required=False, default=0)
+    dinner = serializers.DecimalField(max_digits=3, decimal_places=1, required=False, default=0)
 
     class Meta:
         model = Meals
@@ -60,6 +65,15 @@ class MealWriteSerializer(serializers.ModelSerializer):
 
     def validate_date(self, value):
         return validate_date_in_season(value, self.context['season'])
+
+    def validate_breakfast(self, value):
+        return validate_meal_count(value, 'breakfast')
+
+    def validate_lunch(self, value):
+        return validate_meal_count(value, 'lunch')
+
+    def validate_dinner(self, value):
+        return validate_meal_count(value, 'dinner')
 
     def validate(self, attrs):
         season = self.context['season']
@@ -107,3 +121,50 @@ class MealWriteSerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         return MealsSerializer(instance).data
+
+
+# ---------------------------------------------------------------------------
+# Admin endpoints  (/api/v1/admin/meals...)
+# ---------------------------------------------------------------------------
+
+class AdminMealCountsSerializer(serializers.Serializer):
+    """
+    Breakfast / lunch / dinner counts. Wider digit limits than the model so
+    out-of-range values get the friendlier range / half-meal message.
+    """
+    breakfast = serializers.DecimalField(max_digits=6, decimal_places=2, required=False)
+    lunch = serializers.DecimalField(max_digits=6, decimal_places=2, required=False)
+    dinner = serializers.DecimalField(max_digits=6, decimal_places=2, required=False)
+
+    def validate_breakfast(self, value):
+        return validate_meal_count(value, 'breakfast')
+
+    def validate_lunch(self, value):
+        return validate_meal_count(value, 'lunch')
+
+    def validate_dinner(self, value):
+        return validate_meal_count(value, 'dinner')
+
+
+class AdminMealKeySerializer(serializers.Serializer):
+    """Identifies one record: a member's meal on a date (unique per season)."""
+    member_id = serializers.IntegerField()
+    date = serializers.DateField(input_formats=DATE_INPUT_FORMATS)
+
+
+class AdminMealUpdateSerializer(AdminMealKeySerializer, AdminMealCountsSerializer):
+    """PATCH body: the record key plus whichever counts change."""
+
+
+class AdminMealItemSerializer(AdminMealCountsSerializer):
+    """One member's row in a bulk day entry."""
+    member_id = serializers.IntegerField()
+
+
+class AdminMealBulkSerializer(serializers.Serializer):
+    """
+    POST body for a day: ``meals`` rows are validated one by one in the view
+    so each error names its row and member.
+    """
+    date = serializers.DateField(input_formats=DATE_INPUT_FORMATS)
+    meals = serializers.ListField(allow_empty=False)

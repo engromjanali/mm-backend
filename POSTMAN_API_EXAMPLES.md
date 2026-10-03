@@ -179,7 +179,7 @@ All meal endpoints are scoped by the two headers below — the mess comes from
 }
 ```
 `membership_id` is the member the meal belongs to (any active member of your mess).
-`breakfast` / `lunch` / `dinner` default to `0` and must be `>= 0`.
+`breakfast` / `lunch` / `dinner` default to `0` and must be `0`–`3` in half-meal steps (e.g. `1.5`).
 
 **Response `201`:**
 ```json
@@ -321,3 +321,93 @@ current page.
 **`GET {base_url}/api/v1/meal/1/`**
 
 Returns a single meal row from your mess and session, or `404`.
+
+---
+
+## 3b. My Meals API
+
+### List My Meals (active season)
+**`GET {base_url}/api/v1/user/meals`**
+
+Any member, the manager included; scoped to the caller's active season (no
+`Membership-ID` / `Session-ID` headers). `400` with
+`You are not connected to an active mess.` when the caller has none.
+
+**Response `200`:**
+```json
+{
+    "season": {"id": 1, "name": "July 2026"},
+    "user_name": "Manager Mia",
+    "meal_rate": 100.0,
+    "summary": {"total_meals": 3.5, "meal_cost": 350.0, "days": 1},
+    "days": [
+        {"date": "2026-01-10", "breakfast": 1.0, "lunch": 1.5, "dinner": 1.0, "total": 3.5}
+    ]
+}
+```
+`meal_rate` is the whole season's rate (season cost ÷ season meals); `meal_cost` = my meals × rate.
+
+---
+
+## 3c. Admin Meal APIs (manage meals)
+
+Manager / Acting Manager only, scoped to the caller's **active season** (no
+`Membership-ID` / `Session-ID` headers). Others get `403`.
+
+- Dates: `YYYY-MM-DD` or `DD-MM-YYYY` on input; `YYYY-MM-DD` in responses.
+- `breakfast` / `lunch` / `dinner`: `0`–`3` in half-meal steps; a record needs at least one meal.
+- Every response returns the full payload below, so the app refreshes from it.
+  Writes add `mutation` and `message`.
+
+### Get Manage-Meals Data
+**`GET {base_url}/api/v1/admin/meals`**
+
+**Response `200`:**
+```json
+{
+    "season": {"id": 1, "name": "July 2026"},
+    "members": [
+        {"id": 2, "name": "Alice", "role": "member", "active": true},
+        {"id": 1, "name": "Manager Mia", "role": "manager", "active": true}
+    ],
+    "meal_rate": 100.0,
+    "summary": {"total_meals": 5.0, "total_cost": 500.0, "entries": 2},
+    "entries": [
+        {"id": 7, "member_id": 1, "member_name": "Manager Mia", "date": "2026-01-10",
+         "breakfast": 1.0, "lunch": 1.5, "dinner": 1.0, "total": 3.5}
+    ]
+}
+```
+`members` includes the manager and anyone who left but still has meals this season (`active: false` — no new meals for them).
+`meal_rate` = season cost ÷ season meals (`0` when there are no meals).
+
+### Add a Day's Meals
+**`POST {base_url}/api/v1/admin/meals/bulk`**
+
+```json
+{
+    "date": "2026-01-10",
+    "meals": [
+        {"member_id": 1, "breakfast": 1, "lunch": 1.5, "dinner": 1},
+        {"member_id": 2, "breakfast": 0, "lunch": 1, "dinner": 0.5}
+    ]
+}
+```
+All rows are saved or none. **Response `201`:** payload + `"mutation": {"action": "add", "created_count": 2, "updated_count": 0}`.
+
+Errors:
+- `409` — `Meals for 10-01-2026 are already added. Edit them from Manage meals.` (the day already has any meal)
+- `400` — date outside the season, future date, empty `meals`, unknown / inactive / duplicate member, invalid or all-zero counts (e.g. `Row 2: Breakfast must be between 0 and 3 meals.`)
+
+### Update a Member's Meal
+**`PATCH {base_url}/api/v1/admin/meals`**
+
+```json
+{"member_id": 2, "date": "2026-01-10", "dinner": 2.5}
+```
+Only the sent counts change; the date can't change. `404` if the member has no meal that day, `400` if all counts would become zero (delete instead).
+
+### Delete a Member's Meal
+**`DELETE {base_url}/api/v1/admin/meals`**
+
+Body `{"member_id": 2, "date": "2026-01-10"}` or query `?member_id=2&date=2026-01-10`. `404` if there is no such meal.

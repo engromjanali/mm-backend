@@ -1,9 +1,12 @@
-from datetime import date
+from datetime import date, timedelta
+from decimal import Decimal
 
 from django.test import TestCase
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from AuthManagement.models import User
+from CostManagement.models import Cost
 from MessManagement.models import Mess, MessMemberShip, MessSeason
 from .models import Meals
 
@@ -206,3 +209,181 @@ class MealApiTests(TestCase):
         self.client.force_authenticate(user=self.member_user)
         response = self.client.get('/api/v1/meal/list')
         self.assertEqual(response.status_code, 403)
+
+
+class MealTestBase(TestCase):
+    """A mess with a manager (Manager Mia) and a member (Alice), signed in as the manager."""
+
+    DAY = '2026-01-10'
+
+    def setUp(self):
+        self.client = APIClient()
+        self.mess = Mess.objects.create(name='Test Mess')
+        self.season = MessSeason.objects.create(mess=self.mess, name='Season 1', start_date=date(2020, 1, 1), is_active=True)
+        self.manager_user = User.objects.create_user(email='manager@test.com', phone='0171111111', full_name='Manager Mia', password='pass12345')
+        self.alice_user = User.objects.create_user(email='alice@test.com', phone='0172222222', full_name='Alice', password='pass12345')
+        self.mess.manager = self.manager_user
+        self.mess.save()
+        self.manager = MessMemberShip.objects.create(user=self.manager_user, mess=self.mess, season=self.season)
+        self.alice = MessMemberShip.objects.create(user=self.alice_user, mess=self.mess, season=self.season)
+        self.client.force_authenticate(user=self.manager_user)
+
+    def bulk(self, meals, day=DAY):
+        return self.client.post('/api/v1/admin/meals/bulk', {'date': day, 'meals': meals}, format='json')
+
+    def row(self, member, breakfast=1, lunch=1, dinner=1):
+        return {'member_id': member.id, 'breakfast': breakfast, 'lunch': lunch, 'dinner': dinner}
+
+    def assertRejected(self, response, text, status_code=400):
+        self.assertEqual(response.status_code, status_code, response.data)
+        self.assertIn(text, str(response.data))
+
+
+class AdminMealApiTests(MealTestBase):
+    """Coverage for the manager's /api/v1/admin/meals endpoints."""
+
+    # -- access --------------------------------------------------------------
+
+    def test_plain_member_cannot_use_admin_endpoints(self):
+        self.client.force_authenticate(user=self.alice_user)
+        self.assertEqual(self.client.get('/api/v1/admin/meals').status_code, 403)
+        self.assertEqual(self.bulk([self.row(self.alice)]).status_code, 403)
+        self.assertEqual(self.client.patch('/api/v1/admin/meals', {'member_id': self.alice.id, 'date': self.DAY, 'lunch': 1}, format='json').status_code, 403)
+        self.assertEqual(self.client.delete('/api/v1/admin/meals', {'member_id': self.alice.id, 'date': self.DAY}, format='json').status_code, 403)
+
+    def test_requires_authentication(self):
+        self.client.force_authenticate(user=None)
+        self.assertIn(self.client.get('/api/v1/admin/meals').status_code, (401, 403))
+
+    # -- read ----------------------------------------------------------------
+
+    def test_payload_lists_manager_as_member_with_zero_rate(self):
+        data = self.client.get('/api/v1/admin/meals').data
+        self.assertEqual([m['name'] for m in data['members']], ['Alice', 'Manager Mia'])
+        self.assertEqual(data['meal_rate'], 0.0)
+        self.assertEqual(data['entries'], [])
+
+    # -- bulk add ------------------------------------------------------------
+
+    def test_bulk_adds_half_meals_and_derives_rate(self):
+        Cost.objects.create(season=self.season, performed_by=self.manager, amount=Decimal('500'))
+        response = self.bulk([self.row(self.manager, 1, 1.5, 1), self.row(self.alice, 0, 1, 0.5)])
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(response.data['mutation'], {'action': 'add', 'created_count': 2, 'updated_count': 0})
+        self.assertEqual(response.data['summary']['total_meals'], 5.0)
+        self.assertEqual(response.data['meal_rate'], 100.0)
+        mine = next(e for e in response.data['entries'] if e['member_id'] == self.manager.id)
+        self.assertEqual((mine['lunch'], mine['total'], mine['date']), (1.5, 3.5, self.DAY))
+
+    def test_bulk_rejects_a_day_that_already_has_meals(self):
+        self.assertEqual(self.bulk([self.row(self.manager)]).status_code, 201)
+        # Even for a member who has no meal yet that day.
+        response = self.bulk([self.row(self.alice)])
+        self.assertRejected(response, 'Meals for 10-01-2026 are already added. Edit them from Manage meals.', 409)
+        self.assertFalse(Meals.objects.filter(mess_member=self.alice).exists())
+
+    def test_bulk_is_all_or_nothing(self):
+        response = self.bulk([self.row(self.manager), self.row(self.alice, 5, 0, 0)])
+        self.assertRejected(response, 'Row 2: Breakfast must be between 0 and 3 meals.')
+        self.assertEqual(Meals.objects.count(), 0)
+
+    def test_bulk_validates_meal_counts(self):
+        self.assertRejected(self.bulk([self.row(self.alice, 1.25)]), 'Breakfast must be a whole or half meal')
+        self.assertRejected(self.bulk([self.row(self.alice, -1)]), 'Breakfast must be between 0 and 3 meals.')
+        self.assertRejected(self.bulk([self.row(self.alice, 1, 'lots')]), 'Row 1: A valid number is required.')
+        self.assertRejected(self.bulk([self.row(self.alice, 0, 0, 0)]), 'Add at least one meal for Alice.')
+        self.assertRejected(self.bulk([{'breakfast': 1}]), 'Row 1: member_id is required.')
+        self.assertRejected(self.bulk(['oops']), 'Row 1 must be an object')
+
+    def test_bulk_validates_members(self):
+        self.assertRejected(self.bulk([self.row(self.alice), self.row(self.alice)]), 'Alice is listed more than once.')
+        self.assertRejected(self.bulk([{'member_id': 9999, 'lunch': 1}]), 'no member with ID 9999 in the current season')
+
+        other_mess = Mess.objects.create(name='Other')
+        other_season = MessSeason.objects.create(mess=other_mess, name='S', start_date=date(2020, 1, 1))
+        bob = User.objects.create_user(email='bob@test.com', phone='0173333333', full_name='Bob', password='pass12345')
+        outsider = MessMemberShip.objects.create(user=bob, mess=other_mess, season=other_season)
+        self.assertRejected(self.bulk([self.row(outsider)]), f'no member with ID {outsider.id} in the current season')
+
+        self.alice.left_at = timezone.now()
+        self.alice.save()
+        self.assertRejected(self.bulk([self.row(self.alice)]), 'Alice is no longer an active member of this season.')
+
+    def test_bulk_validates_date_and_list(self):
+        self.assertRejected(self.client.post('/api/v1/admin/meals/bulk', {'meals': [self.row(self.alice)]}, format='json'), 'date')
+        self.assertRejected(self.bulk([self.row(self.alice)], day='31-02-2026'), 'Date has wrong format')
+        self.assertRejected(self.bulk([self.row(self.alice)], day='2019-12-31'), 'Date is before the season started (01-01-2020).')
+        future = (timezone.localdate() + timedelta(days=2)).isoformat()
+        self.assertRejected(self.bulk([self.row(self.alice)], day=future), "Meals can't be added for a future date.")
+        self.assertRejected(self.bulk([]), 'This list may not be empty.')
+        self.assertRejected(self.client.post('/api/v1/admin/meals/bulk', {'date': self.DAY, 'meals': 'x'}, format='json'), 'Expected a list')
+
+        self.season.end_date = date(2025, 12, 31)
+        self.season.save()
+        self.assertRejected(self.bulk([self.row(self.alice)]), 'Date is after the season ended (31-12-2025).')
+
+    # -- update --------------------------------------------------------------
+
+    def test_update_changes_only_sent_counts(self):
+        self.bulk([self.row(self.alice, 1, 1, 1)])
+        response = self.client.patch('/api/v1/admin/meals', {'member_id': self.alice.id, 'date': self.DAY, 'dinner': 2.5}, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data['mutation']['updated_count'], 1)
+        meal = Meals.objects.get(mess_member=self.alice)
+        self.assertEqual((meal.breakfast, meal.dinner, meal.total_meals), (Decimal('1'), Decimal('2.5'), Decimal('4.5')))
+
+    def test_update_validation(self):
+        self.bulk([self.row(self.alice, 1, 0, 0)])
+        patch = lambda body: self.client.patch('/api/v1/admin/meals', {'member_id': self.alice.id, 'date': self.DAY, **body}, format='json')
+        self.assertRejected(patch({}), 'Send breakfast, lunch or dinner to update.')
+        self.assertRejected(patch({'breakfast': 0}), "A meal can't be all zero. Delete it instead.")
+        self.assertRejected(patch({'lunch': 4}), 'Lunch must be between 0 and 3 meals.')
+        missing = self.client.patch('/api/v1/admin/meals', {'member_id': self.manager.id, 'date': self.DAY, 'lunch': 1}, format='json')
+        self.assertRejected(missing, 'Manager Mia has no meal on 10-01-2026.', 404)
+        self.assertRejected(self.client.patch('/api/v1/admin/meals', {'date': self.DAY, 'lunch': 1}, format='json'), 'member_id')
+
+    # -- delete --------------------------------------------------------------
+
+    def test_delete_by_body_or_query_params(self):
+        self.bulk([self.row(self.alice), self.row(self.manager)])
+        by_body = self.client.delete('/api/v1/admin/meals', {'member_id': self.alice.id, 'date': self.DAY}, format='json')
+        self.assertEqual(by_body.status_code, 200, by_body.data)
+        self.assertEqual(by_body.data['mutation']['action'], 'delete')
+        by_query = self.client.delete(f'/api/v1/admin/meals?member_id={self.manager.id}&date={self.DAY}')
+        self.assertEqual(by_query.status_code, 200, by_query.data)
+        self.assertEqual(Meals.objects.count(), 0)
+        again = self.client.delete('/api/v1/admin/meals', {'member_id': self.alice.id, 'date': self.DAY}, format='json')
+        self.assertRejected(again, 'Alice has no meal on 10-01-2026.', 404)
+
+
+
+class MyMealApiTests(MealTestBase):
+    """Coverage for the member's own GET /api/v1/user/meals."""
+
+    def test_each_member_sees_only_own_meals_with_season_rate(self):
+        Cost.objects.create(season=self.season, performed_by=self.manager, amount=Decimal('500'))
+        self.bulk([self.row(self.manager, 1, 1.5, 1), self.row(self.alice, 0, 1, 0.5)])
+
+        mine = self.client.get('/api/v1/user/meals')
+        self.assertEqual(mine.status_code, 200, mine.data)
+        self.assertEqual(mine.data['user_name'], 'Manager Mia')
+        self.assertEqual(mine.data['meal_rate'], 100.0)
+        self.assertEqual(mine.data['summary'], {'total_meals': 3.5, 'meal_cost': 350.0, 'days': 1})
+        self.assertEqual(mine.data['days'], [{'date': self.DAY, 'breakfast': 1.0, 'lunch': 1.5, 'dinner': 1.0, 'total': 3.5}])
+
+        self.client.force_authenticate(user=self.alice_user)
+        alice = self.client.get('/api/v1/user/meals').data
+        self.assertEqual(alice['summary']['total_meals'], 1.5)
+        self.assertEqual(alice['meal_rate'], 100.0)
+
+    def test_empty_season_has_zero_rate(self):
+        data = self.client.get('/api/v1/user/meals').data
+        self.assertEqual((data['meal_rate'], data['days'], data['summary']['total_meals']), (0.0, [], 0.0))
+
+    def test_user_without_active_mess_is_told_why(self):
+        loner = User.objects.create_user(email='loner@test.com', phone='0174444444', full_name='Loner', password='pass12345')
+        self.client.force_authenticate(user=loner)
+        self.assertRejected(self.client.get('/api/v1/user/meals'), 'You are not connected to an active mess.')
+
+        self.client.force_authenticate(user=None)
+        self.assertIn(self.client.get('/api/v1/user/meals').status_code, (401, 403))
