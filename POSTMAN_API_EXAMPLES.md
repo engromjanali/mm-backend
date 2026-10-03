@@ -201,7 +201,7 @@ Each action returns `200 {"message": "..."}`; errors are `{"detail": "..."}`.
 
 | Endpoint | Who | What |
 |---|---|---|
-| `GET /api/v1/admin/members?include_disabled=true` | manager / acting manager | Season members; each has `disabled` (members who left are never listed) |
+| `GET /api/v1/admin/members?include_disabled=true&include_left=true` | manager / acting manager | Members of the current season (active only by default); `include_disabled` adds members a manager disabled, `include_left` adds members who left. Each has `state` (`active` / `disabled` / `left`), `disabled` and `left_at` |
 | `POST /api/v1/admin/members/<id>/disable` | manager / acting manager | Member loses access until enabled; records stay. Disabling the acting manager removes that role |
 | `POST /api/v1/admin/members/<id>/enable` | manager / acting manager | Gives access back (fails if they joined another mess) |
 | `POST /api/v1/admin/members/<id>/acting-manager` | primary manager | Make acting manager (the previous one becomes a member) |
