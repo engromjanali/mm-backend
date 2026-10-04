@@ -230,6 +230,12 @@ if CLOUDINARY_CLOUD_NAME and CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET:
         'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
     }
 
+# Scheduled jobs: Vercel Cron calls /api/v1/cron/... with
+# "Authorization: Bearer <CRON_SECRET>". Empty = the cron endpoints refuse every call.
+CRON_SECRET = os.getenv('CRON_SECRET', '')
+# The messes' local time zone: scheduled jobs use its date ("today"), not UTC's.
+MESS_TIME_ZONE = os.getenv('MESS_TIME_ZONE', 'Asia/Dhaka')
+
 AUTH_USER_MODEL = 'AuthManagement.User'
 
 REST_FRAMEWORK = {

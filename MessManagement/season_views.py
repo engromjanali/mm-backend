@@ -8,9 +8,10 @@ members of a source season who haven't left; no other season ends. Ending a
 season stops records dated after its end date; disabling one keeps its data but
 nobody can work in it; deleting one removes all its meals, deposits and costs.
 
-With auto-create on, ``run_auto_create_seasons`` (the ``create_scheduled_seasons``
-command, run daily) creates a ``season-xyz`` on the chosen day of each month and
-switches the members to it.
+With auto-create on, ``run_auto_create_seasons`` creates a ``season-xyz`` on the
+chosen day of each month and switches the members to it. It runs nightly just
+after midnight Bangladesh time (``/api/v1/cron/create-scheduled-seasons``, or the
+``create_scheduled_seasons`` command).
 """
 from django.db.models import Count, Max, Min, Q
 from django.utils import timezone

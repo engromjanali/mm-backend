@@ -1,3 +1,13 @@
 {
-  "$schema": "https://openapi.vercel.sh/vercel.json"
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "crons": [
+    {
+      "path": "/api/v1/cron/expire-invites-and-requests",
+      "schedule": "30 17 * * *"
+    },
+    {
+      "path": "/api/v1/cron/create-scheduled-seasons",
+      "schedule": "5 18 * * *"
+    }
+  ]
 }

@@ -1,10 +1,12 @@
 from datetime import timedelta
 
+from django.test import override_settings
 from django.utils import timezone
 from rest_framework.test import APITestCase
 
 from AuthManagement.models import User
 from .models import Mess, MessMemberShip, MessMemberShipInvitation, MessMemberShipRequest
+from .utils import expire_stale_invites_and_requests
 
 
 class InviteAndRequestExpiryTests(APITestCase):
@@ -95,3 +97,43 @@ class InviteAndRequestExpiryTests(APITestCase):
         self.as_user(self.manager)
         response = self.client.post('/api/v1/admin/join-requests/decision', {'request_id': join_request.pk, 'decision': 'accepted'}, format='json')
         self.assertEqual(response.status_code, 200, response.data)
+
+    # -- nightly job ------------------------------------------------------------
+
+    def test_listing_reports_expiry_without_writing_to_the_table(self):
+        invite = self.invite_alice()
+        self.age(MessMemberShipInvitation, invite.pk, 8)
+
+        self.assertEqual(self.client.get('/api/v1/admin/invites').data[0]['status'], 'expired')
+        invite.refresh_from_db()
+        self.assertEqual(invite.status, 'pending')
+
+    def test_nightly_job_saves_expired_only_on_stale_pending_rows(self):
+        stale = self.invite_alice()
+        self.age(MessMemberShipInvitation, stale.pk, 8)
+        old_request = self.request_as_alice()
+        self.age(MessMemberShipRequest, old_request.pk, 8)
+        bob = User.objects.create_user(email='bob@test.com', phone='01733333333', full_name='Bob', password='pass12345')
+        self.as_user(self.manager)
+        fresh = MessMemberShipInvitation.objects.get(pk=self.client.post('/api/v1/admin/invites', {'user_id': bob.id}, format='json').data['id'])
+
+        self.assertEqual(expire_stale_invites_and_requests(), (1, 1))
+
+        stale.refresh_from_db()
+        old_request.refresh_from_db()
+        fresh.refresh_from_db()
+        self.assertEqual((stale.status, old_request.status, fresh.status), ('expired', 'expired', 'pending'))
+
+    def test_cron_endpoint_needs_the_secret(self):
+        url = '/api/v1/cron/expire-invites-and-requests'
+        with override_settings(CRON_SECRET=''):
+            self.assertRejected(self.client.get(url, HTTP_AUTHORIZATION='Bearer x'), "CRON_SECRET isn't configured", 403)
+        with override_settings(CRON_SECRET='s3cret'):
+            self.assertRejected(self.client.get(url, HTTP_AUTHORIZATION='Bearer wrong'), 'Invalid cron secret.', 403)
+            invite = self.invite_alice()
+            self.age(MessMemberShipInvitation, invite.pk, 8)
+            response = self.client.get(url, HTTP_AUTHORIZATION='Bearer s3cret')
+            self.assertEqual(response.status_code, 200, response.data)
+            self.assertEqual(response.data['invites'], 1)
+            invite.refresh_from_db()
+            self.assertEqual(invite.status, 'expired')

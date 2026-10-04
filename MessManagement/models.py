@@ -3,10 +3,30 @@ from datetime import timedelta
 
 from django.core.validators import MaxValueValidator
 from django.db import models
+from django.utils import timezone
 from AuthManagement.models import User
 
 # A pending invitation or join request expires this long after it was sent.
+# The nightly job saves `expired`; until it runs, `current_status` already
+# reports it, so nothing can be accepted late.
 INVITE_AND_REQUEST_LIFETIME = timedelta(days=7)
+
+
+class ExpiringMixin:
+    """`expires_at` / `current_status` for a model with a `status` and a sent time."""
+
+    sent_field = None
+
+    @property
+    def expires_at(self):
+        return getattr(self, self.sent_field) + INVITE_AND_REQUEST_LIFETIME
+
+    @property
+    def current_status(self):
+        """`status`, or `expired` for a pending one past its 7 days that the nightly job hasn't marked yet."""
+        if self.status == 'pending' and timezone.now() >= self.expires_at:
+            return 'expired'
+        return self.status
 
 class Mess(models.Model):
     name = models.CharField(max_length=100)
@@ -88,7 +108,8 @@ class MessMemberShip(models.Model):
 
 
 
-class MessMemberShipRequest(models.Model):
+class MessMemberShipRequest(ExpiringMixin, models.Model):
+    sent_field = 'requested_at'
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='user_requests')
     mess = models.ForeignKey(Mess, on_delete=models.CASCADE, related_name='mess_requests')
     # `cancelled` = withdrawn by the user (or made moot when they joined by invite);
@@ -105,17 +126,14 @@ class MessMemberShipRequest(models.Model):
     class Meta:
         db_table = 'mess_membership_requests'
 
-    @property
-    def expires_at(self):
-        return self.requested_at + INVITE_AND_REQUEST_LIFETIME
-
     
 
 def generate_invite_code():
     return secrets.token_hex(4).upper()
 
 
-class MessMemberShipInvitation(models.Model):
+class MessMemberShipInvitation(ExpiringMixin, models.Model):
+    sent_field = 'invited_at'
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='user_invitations')
     mess = models.ForeignKey(Mess, on_delete=models.CASCADE, related_name='mess_invitations')
     invited_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='sent_invitations')
@@ -132,10 +150,6 @@ class MessMemberShipInvitation(models.Model):
 
     class Meta:
         db_table = 'mess_membership_invitations'
-
-    @property
-    def expires_at(self):
-        return self.invited_at + INVITE_AND_REQUEST_LIFETIME
 
 
 

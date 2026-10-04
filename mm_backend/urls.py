@@ -38,6 +38,8 @@ urlpatterns = [
     path('api/v1/admin/', include('CostManagement.admin_urls')),
     path('api/v1/user/', include('MealManagement.user_urls')),
     path('api/v1/admin/', include('MealManagement.admin_urls')),
+    # Scheduled jobs (Vercel Cron, secret-protected)
+    path('api/v1/cron/', include('MessManagement.cron_urls')),
     path('api/v1/mess/', include('MessManagement.urls')),
     path('api/v1/notice/', include('MessManagement.notice_urls')),
     path('api/v1/cost/', include('CostManagement.urls')),

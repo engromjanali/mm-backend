@@ -11,9 +11,10 @@ ways into a mess:
 * the user sends a join request to a mess              -> manager approves it
 * the user creates a new mess                          -> becomes its manager
 
-An invite or join request nobody answers within 7 days becomes ``expired``
-(``expire_stale_invites_and_requests``); the user can then be invited again or
-send a new request.
+An invite or join request nobody answers within 7 days expires. A nightly job
+saves ``expired``; until it runs, each endpoint checks only the row it touches
+(``current_status``), never the whole table. The user can then be invited again
+or send a new request.
 
 Leadership lives on ``Mess`` so it spans every season. Each season owns its own
 memberships; a new season copies every member of its source season who has not
@@ -33,13 +34,14 @@ from rest_framework.views import APIView
 from AuthManagement.models import User
 from MealManagement.utils import DATE_OUTPUT_FORMAT
 from .models import (
+    INVITE_AND_REQUEST_LIFETIME,
     Mess,
     MessMemberShip,
     MessMemberShipInvitation,
     MessMemberShipRequest,
     MessSeason,
 )
-from .utils import expire_stale_invites_and_requests, get_active_membership, set_current_membership, usable_memberships
+from .utils import expire_now, get_active_membership, set_current_membership, usable_memberships
 
 MANAGER_ROLES = ('manager', 'acting_manager')
 
@@ -175,10 +177,15 @@ def _active_season_member(manager, membership_id):
 def request_summary(join_request):
     """A join request as its sender sees it; the season is set once it's approved."""
     return {
-        "id": join_request.id, "mess_id": join_request.mess_id, "mess_name": join_request.mess.name, "status": join_request.status,
+        "id": join_request.id, "mess_id": join_request.mess_id, "mess_name": join_request.mess.name, "status": join_request.current_status,
         **season_ref(join_request.season),
         "created_at": join_request.requested_at, "responded_at": join_request.responded_at, "expires_at": join_request.expires_at,
     }
+
+
+def _expiry_cutoff():
+    """Pending invites / requests sent before this have expired."""
+    return timezone.now() - INVITE_AND_REQUEST_LIFETIME
 
 
 def local_date(value):
@@ -262,7 +269,6 @@ class MembershipStatusView(APIView):
 
     def get(self, request):
         user = request.user
-        expire_stale_invites_and_requests()
         current = get_active_membership(user)
         current_id = current.id if current else None
         memberships = (
@@ -276,11 +282,11 @@ class MembershipStatusView(APIView):
             "current": membership_summary(current, current_id) if current else None,
             "memberships": [membership_summary(m, current_id) for m in memberships],
             "history": [membership_summary(m, current_id) for m in memberships if m.id != current_id],
-            "pending_requests": [request_summary(r) for r in join_requests if r.status == 'pending'],
+            "pending_requests": [request_summary(r) for r in join_requests if r.current_status == 'pending'],
             "join_requests": [request_summary(r) for r in join_requests],
             "invites": [
                 {
-                    "id": i.id, "mess_id": i.mess_id, "mess_name": i.mess.name, "invite_code": i.invite_code, "status": i.status,
+                    "id": i.id, "mess_id": i.mess_id, "mess_name": i.mess.name, "invite_code": i.invite_code, "status": i.current_status,
                     **season_ref(i.season),
                     "invited_by": i.invited_by.full_name if i.invited_by else None,
                     "created_at": i.invited_at, "responded_at": i.responded_at, "expires_at": i.expires_at,
@@ -348,8 +354,7 @@ class JoinRequestView(APIView):
             raise ValidationError({"detail": "This mess has no running season."})
         if is_member_of(user, mess.active_season):
             raise ValidationError({"detail": f"You're already a member of {mess.name}."})
-        expire_stale_invites_and_requests()
-        if MessMemberShipRequest.objects.filter(user=user, mess=mess, status='pending').exists():
+        if MessMemberShipRequest.objects.filter(user=user, mess=mess, status='pending', requested_at__gt=_expiry_cutoff()).exists():
             raise ValidationError({"detail": "You already have a pending request to this mess."})
 
         join_request = MessMemberShipRequest.objects.create(user=user, mess=mess)
@@ -359,9 +364,9 @@ class JoinRequestView(APIView):
         )
 
     def delete(self, request, pk):
-        expire_stale_invites_and_requests()
         join_request = MessMemberShipRequest.objects.filter(id=pk, user=request.user).first()
-        if join_request and join_request.status == 'expired':
+        if join_request and join_request.current_status == 'expired':
+            expire_now(join_request)
             raise ValidationError({"detail": f"This join request already expired on {local_date(join_request.expires_at)}."})
         updated = MessMemberShipRequest.objects.filter(id=pk, user=request.user, status='pending').update(
             status='cancelled', responded_at=timezone.now(), response_message='Cancelled by user.',
@@ -383,9 +388,9 @@ class InviteResponseView(APIView):
 
     def post(self, request):
         code = str(request.data.get('invite_code', '')).strip().upper()
-        expire_stale_invites_and_requests()
         invite = MessMemberShipInvitation.objects.select_related('mess', 'season').filter(invite_code=code, user=request.user).first()
-        if invite and invite.status == 'expired':
+        if invite and invite.current_status == 'expired':
+            expire_now(invite)
             raise ValidationError({"detail": f"This invitation expired on {local_date(invite.expires_at)}. Ask the manager to invite you again."})
         if not invite or invite.status != 'pending':
             raise ValidationError({"invite_code": "Invite is invalid, already answered, or not addressed to you."})
@@ -518,7 +523,7 @@ class AdminInviteView(APIView):
         return {
             "id": invite.id,
             "invite_code": invite.invite_code,
-            "status": invite.status,
+            "status": invite.current_status,
             "user_id": str(invite.user_id),
             "user_name": invite.user.full_name,
             "user_email": invite.user.email,
@@ -530,7 +535,6 @@ class AdminInviteView(APIView):
 
     def get(self, request):
         membership = get_managed_membership(request.user)
-        expire_stale_invites_and_requests()
         invites = MessMemberShipInvitation.objects.select_related('user', 'season').filter(mess=membership.mess).order_by('-invited_at')
         return Response([self._serialize(i) for i in invites])
 
@@ -545,17 +549,16 @@ class AdminInviteView(APIView):
             raise ValidationError({"detail": f"{user.full_name} is already a member of {season.name}."})
 
         # An expired invite doesn't count: a new one is sent.
-        expire_stale_invites_and_requests()
-        invite = MessMemberShipInvitation.objects.filter(mess=membership.mess, user=user, season=season, status='pending').first()
+        invite = MessMemberShipInvitation.objects.filter(mess=membership.mess, user=user, season=season, status='pending', invited_at__gt=_expiry_cutoff()).first()
         if not invite:
             invite = MessMemberShipInvitation.objects.create(mess=membership.mess, user=user, season=season, invited_by=request.user)
         return Response(self._serialize(invite), status=status.HTTP_201_CREATED)
 
     def delete(self, request):
         membership = get_managed_membership(request.user)
-        expire_stale_invites_and_requests()
         invite = MessMemberShipInvitation.objects.filter(id=request.data.get('invite_id'), mess=membership.mess).first()
-        if invite and invite.status == 'expired':
+        if invite and invite.current_status == 'expired':
+            expire_now(invite)
             raise ValidationError({"detail": f"This invitation already expired on {local_date(invite.expires_at)}."})
         updated = MessMemberShipInvitation.objects.filter(
             id=request.data.get('invite_id'), mess=membership.mess, status='pending',
@@ -571,7 +574,6 @@ class AdminJoinRequestListView(APIView):
 
     def get(self, request):
         membership = get_managed_membership(request.user)
-        expire_stale_invites_and_requests()
         requests_qs = (
             MessMemberShipRequest.objects.select_related('user', 'season')
             .filter(mess=membership.mess)
@@ -580,7 +582,7 @@ class AdminJoinRequestListView(APIView):
         return Response([
             {
                 "id": r.id,
-                "status": r.status,
+                "status": r.current_status,
                 "user_id": str(r.user_id),
                 "user_name": r.user.full_name,
                 "user_email": r.user.email,
@@ -609,9 +611,9 @@ class AdminJoinRequestDecisionView(APIView):
         decision = request.data.get('decision')
         if decision not in ('accepted', 'rejected'):
             raise ValidationError({"decision": "Must be 'accepted' or 'rejected'."})
-        expire_stale_invites_and_requests()
         join_request = MessMemberShipRequest.objects.select_related('user').filter(id=request.data.get('request_id'), mess=membership.mess).first()
-        if join_request and join_request.status == 'expired':
+        if join_request and join_request.current_status == 'expired':
+            expire_now(join_request)
             raise ValidationError({"detail": f"{join_request.user.full_name}'s join request expired on {local_date(join_request.expires_at)}. They can send a new one."})
         if not join_request or join_request.status != 'pending':
             raise NotFound("Pending request not found.")

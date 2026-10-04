@@ -1,12 +1,15 @@
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
+from datetime import timezone as dt_timezone
+from unittest import mock
 
+from django.test import override_settings
 from django.utils import timezone
 from rest_framework.test import APITestCase
 
 from AuthManagement.models import User
 from DepositManagement.models import Deposit
 from .models import Mess, MessMemberShip, MessSeason
-from .utils import auto_create_due, run_auto_create_seasons
+from .utils import auto_create_due, mess_today, run_auto_create_seasons
 
 
 class SeasonManagementAPITests(APITestCase):
@@ -256,3 +259,25 @@ class SeasonManagementAPITests(APITestCase):
         # Runs once per day.
         self.assertEqual(run_auto_create_seasons(today), [])
         self.assertEqual(run_auto_create_seasons(today + timedelta(days=1)), [])
+
+    # -- nightly trigger ----------------------------------------------------------
+
+    @override_settings(CRON_SECRET='s3cret')
+    def test_cron_endpoint_creates_due_seasons_once(self):
+        Mess.objects.filter(pk=self.mess.pk).update(auto_create_season=True, auto_create_season_day=10)
+        url = '/api/v1/cron/create-scheduled-seasons'
+        self.assertRejected(self.client.get(url, HTTP_AUTHORIZATION='Bearer wrong'), 'Invalid cron secret.', 403)
+
+        with mock.patch('MessManagement.cron_views.mess_today', return_value=date(2026, 8, 10)):
+            response = self.client.get(url, HTTP_AUTHORIZATION='Bearer s3cret')
+            self.assertEqual(response.status_code, 200, response.data)
+            self.assertEqual(response.data['message'], '1 season(s) created.')
+            self.assertRegex(response.data['seasons'][0]['season_name'], r'^season-[a-z]{3}$')
+            # A repeated call the same day creates nothing.
+            self.assertEqual(self.client.get(url, HTTP_AUTHORIZATION='Bearer s3cret').data['message'], '0 season(s) created.')
+
+    @override_settings(MESS_TIME_ZONE='Asia/Dhaka')
+    def test_jobs_use_the_bangladesh_date_not_utc(self):
+        # 19:00 UTC on 9 Aug is 1:00 AM on 10 Aug in Bangladesh.
+        with mock.patch('django.utils.timezone.now', return_value=datetime(2026, 8, 9, 19, 0, tzinfo=dt_timezone.utc)):
+            self.assertEqual(mess_today(), date(2026, 8, 10))

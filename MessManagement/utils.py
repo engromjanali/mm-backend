@@ -2,7 +2,9 @@ import secrets
 import string
 from datetime import timedelta
 from decimal import Decimal
+from zoneinfo import ZoneInfo
 
+from django.conf import settings
 from django.db import transaction
 from django.db.models import Count, Q, Subquery, Sum
 from django.utils import timezone
@@ -97,15 +99,25 @@ def set_current_membership(user, membership):
 
 def expire_stale_invites_and_requests():
     """
-    Marks pending invitations and join requests older than
-    ``INVITE_AND_REQUEST_LIFETIME`` as ``expired``. Called before they're
-    listed or acted on, so no scheduled job is needed.
+    Saves ``expired`` on every pending invitation and join request older than
+    ``INVITE_AND_REQUEST_LIFETIME``. Runs nightly (the
+    ``expire_invites_and_requests`` command / cron endpoint), never per request:
+    between runs, endpoints check the one row they touch (``current_status``).
+    Returns how many invitations and requests expired.
     """
     cutoff = timezone.now() - INVITE_AND_REQUEST_LIFETIME
-    MessMemberShipInvitation.objects.filter(status='pending', invited_at__lt=cutoff).update(status='expired', updated_at=timezone.now())
-    MessMemberShipRequest.objects.filter(status='pending', requested_at__lt=cutoff).update(
+    invites = MessMemberShipInvitation.objects.filter(status='pending', invited_at__lt=cutoff).update(status='expired', updated_at=timezone.now())
+    requests = MessMemberShipRequest.objects.filter(status='pending', requested_at__lt=cutoff).update(
         status='expired', updated_at=timezone.now(), response_message='Expired: not answered within 7 days.',
     )
+    return invites, requests
+
+
+def expire_now(item):
+    """Saves ``expired`` on one invitation / join request found past its 7 days."""
+    if item.status == 'pending' and item.current_status == 'expired':
+        item.status = 'expired'
+        item.save(update_fields=['status', 'updated_at'])
 
 
 def random_season_name(mess):
@@ -151,6 +163,11 @@ def move_current_off(season):
             .order_by('-season__start_date', '-season_id').first()
         )
         set_current_membership(user, fallback)
+
+
+def mess_today():
+    """Today's date in the messes' time zone (``MESS_TIME_ZONE``), e.g. Bangladesh, not UTC."""
+    return timezone.localtime(timezone.now(), ZoneInfo(settings.MESS_TIME_ZONE)).date()
 
 
 def auto_create_due(mess, today):
