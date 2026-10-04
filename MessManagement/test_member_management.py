@@ -147,7 +147,8 @@ class MemberManagementAPITests(APITestCase):
         self.assertEqual(self.client.get('/api/v1/admin/members').status_code, 403)
 
     def test_members_of_other_seasons_are_not_found(self):
-        self.client.post('/api/v1/admin/seasons', {'name': 'August 2026'}, format='json')
-        # alice_m belongs to the closed July season.
+        august = self.client.post('/api/v1/admin/seasons', {'name': 'August 2026'}, format='json').data['season']
+        self.client.post(f"/api/v1/admin/seasons/{august['id']}/switch")
+        # alice_m belongs to July; the manager now works in August.
         self.assertRejected(self.act('disable', self.alice_m), 'Member not found in the current season.', 404)
         self.assertRejected(self.act('transfer-ownership', self.alice_m), 'Member not found in the current season.', 404)

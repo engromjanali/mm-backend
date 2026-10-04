@@ -92,7 +92,8 @@ class CostAPITests(APITestCase):
 
     def test_new_season_starts_with_an_empty_cost_list(self):
         self.add()
-        self.assertEqual(self.client.post('/api/v1/admin/seasons', {'name': 'August 2026'}, format='json').status_code, 201)
+        august = self.client.post('/api/v1/admin/seasons', {'name': 'August 2026'}, format='json').data['season']
+        self.client.post(f"/api/v1/admin/seasons/{august['id']}/switch")
         listing = self.client.get('/api/v1/user/costs').data
         self.assertEqual(listing['season']['name'], 'August 2026')
         self.assertEqual(listing['data'], [])

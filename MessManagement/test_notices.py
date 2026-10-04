@@ -1,7 +1,7 @@
 from rest_framework.test import APITestCase
 
 from AuthManagement.models import User
-from .models import Notices
+from .models import MessMemberShip, Notices
 
 
 class NoticeAPITests(APITestCase):
@@ -47,7 +47,8 @@ class NoticeAPITests(APITestCase):
 
     def test_new_season_starts_with_an_empty_board(self):
         old_id = self.publish('Old season', pinned=True).data['id']
-        self.assertEqual(self.client.post('/api/v1/admin/seasons', {'name': 'August 2026'}, format='json').status_code, 201)
+        august = self.client.post('/api/v1/admin/seasons', {'name': 'August 2026'}, format='json').data['season']
+        self.client.post(f"/api/v1/admin/seasons/{august['id']}/switch")
 
         self.assertEqual(self.client.get('/api/v1/user/notices').data['data'], [])
         self.assertRejected(self.pin(old_id, False), 'Notice not found in the current season', 404)
@@ -56,6 +57,8 @@ class NoticeAPITests(APITestCase):
         # The new season has its own pinned slot; the old notice stays in its season.
         new_id = self.publish('New season', pinned=True).data['id']
         self.client.force_authenticate(user=self.alice)
+        alice_august = MessMemberShip.objects.get(user=self.alice, season_id=august['id'])
+        self.client.post('/api/v1/user/membership/switch', {'membership_id': alice_august.id}, format='json')
         self.assertEqual([n['id'] for n in self.client.get('/api/v1/user/notices').data['data']], [new_id])
         self.assertTrue(Notices.objects.get(id=old_id).is_pinned)
         self.assertEqual(Notices.objects.get(id=new_id).season.name, 'August 2026')

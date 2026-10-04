@@ -30,7 +30,7 @@
 ---
 
 ## 2a. Membership (user / admin)
-Manager & acting manager are stored on `Mess`; a member's role is derived from it. Users join a mess only through a membership in its active season.
+Manager & acting manager are stored on `Mess`; a member's role is derived from it. Users join a mess only through a membership in a running season; the manager picks it when inviting or approving a join request.
 
 | Endpoint | Method | Status |
 |---|---|---|

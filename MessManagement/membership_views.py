@@ -12,7 +12,8 @@ ways into a mess:
 * the user creates a new mess                          -> becomes its manager
 
 Leadership lives on ``Mess`` so it spans every season. Each season owns its own
-memberships; starting a new season copies every member who has not left.
+memberships; a new season copies every member of its source season who has not
+left (see ``season_views``).
 
 User endpoints live under ``/api/v1/user/`` and manager endpoints under
 ``/api/v1/admin/``.
@@ -52,21 +53,51 @@ def get_managed_membership(user):
     return membership
 
 
-def is_member_of(user, mess):
-    """Whether [user] already has a usable membership in [mess]'s active season."""
-    season = mess.active_season
+def is_member_of(user, season):
+    """Whether [user] already has a usable membership in [season]."""
     return season is not None and usable_memberships(user).filter(season=season).exists()
 
 
-def join_active_season(user, mess):
-    season = mess.active_season
-    if not season:
-        raise ValidationError({"detail": "This mess has no active season."})
+def join_season(user, season):
     membership, _ = MessMemberShip.objects.update_or_create(
-        user=user, mess=mess, season=season,
+        user=user, mess_id=season.mess_id, season=season,
         defaults={'status': 'active', 'left_at': None},
     )
     return membership
+
+
+def running_seasons(mess):
+    """[mess]'s seasons new members can be added to: not ended, not disabled."""
+    return mess.seasons.filter(end_date__isnull=True, is_disabled=False)
+
+
+def season_closed_reason(season):
+    """Why nobody can be added to [season], or ``None`` while it runs."""
+    if season.is_disabled:
+        return f"{season.name} is disabled."
+    if season.end_date is not None:
+        return f"{season.name} has ended."
+    return None
+
+
+def target_season(manager, season_id):
+    """
+    The running season of the manager's mess that a new member joins:
+    [season_id], or the season the manager is working in when it's empty.
+    """
+    if season_id in (None, ''):
+        season = manager.season
+    else:
+        try:
+            season = manager.mess.seasons.filter(pk=int(season_id)).first()
+        except (TypeError, ValueError):
+            raise ValidationError({"season_id": "season_id must be a number."})
+        if not season:
+            raise ValidationError({"season_id": "Season not found in this mess."})
+    reason = season_closed_reason(season)
+    if reason:
+        raise ValidationError({"season_id": f"{reason} Choose a running season."})
+    return season
 
 
 def membership_state(membership):
@@ -91,7 +122,7 @@ def membership_summary(membership, current_id=None):
         "joined_at": membership.joined_at,
         "left_at": membership.left_at,
         "is_current": current_id is not None and membership.id == current_id,
-        "can_switch": state == 'active',
+        "can_switch": state == 'active' and not membership.season.is_disabled,
     }
 
 
@@ -137,11 +168,16 @@ def _active_season_member(manager, membership_id):
 
 
 def request_summary(join_request):
-    """A join request as its sender sees it."""
+    """A join request as its sender sees it; the season is set once it's approved."""
     return {
         "id": join_request.id, "mess_id": join_request.mess_id, "mess_name": join_request.mess.name, "status": join_request.status,
+        **season_ref(join_request.season),
         "created_at": join_request.requested_at, "responded_at": join_request.responded_at,
     }
+
+
+def season_ref(season):
+    return {"season_id": season.id if season else None, "season_name": season.name if season else None}
 
 
 def user_summary(user):
@@ -223,8 +259,8 @@ class MembershipStatusView(APIView):
             .filter(user=user)
             .order_by('-season__start_date', '-season_id', '-joined_at')
         )
-        join_requests = MessMemberShipRequest.objects.select_related('mess').filter(user=user).order_by('-requested_at')
-        invites = MessMemberShipInvitation.objects.select_related('mess', 'invited_by').filter(user=user).order_by('-invited_at')
+        join_requests = MessMemberShipRequest.objects.select_related('mess', 'season').filter(user=user).order_by('-requested_at')
+        invites = MessMemberShipInvitation.objects.select_related('mess', 'season', 'invited_by').filter(user=user).order_by('-invited_at')
         return Response({
             "current": membership_summary(current, current_id) if current else None,
             "memberships": [membership_summary(m, current_id) for m in memberships],
@@ -234,6 +270,7 @@ class MembershipStatusView(APIView):
             "invites": [
                 {
                     "id": i.id, "mess_id": i.mess_id, "mess_name": i.mess.name, "invite_code": i.invite_code, "status": i.status,
+                    **season_ref(i.season),
                     "invited_by": i.invited_by.full_name if i.invited_by else None,
                     "created_at": i.invited_at, "responded_at": i.responded_at,
                 }
@@ -272,7 +309,7 @@ class CreateMessView(APIView):
                 email=data['email'], phone=data['phone'].strip(), manager=user,
             )
             season = MessSeason.objects.create(
-                mess=mess, name=data['season_name'].strip(), start_date=timezone.now().date(), is_active=True,
+                mess=mess, name=data['season_name'].strip(), start_date=timezone.now().date(),
             )
             membership = MessMemberShip.objects.create(user=user, mess=mess, season=season, status='active')
             set_current_membership(user, membership)
@@ -297,8 +334,8 @@ class JoinRequestView(APIView):
         except (Mess.DoesNotExist, TypeError, ValueError):
             raise ValidationError({"mess_id": "Mess not found."})
         if not mess.active_season:
-            raise ValidationError({"detail": "This mess has no active season."})
-        if is_member_of(user, mess):
+            raise ValidationError({"detail": "This mess has no running season."})
+        if is_member_of(user, mess.active_season):
             raise ValidationError({"detail": f"You're already a member of {mess.name}."})
         if MessMemberShipRequest.objects.filter(user=user, mess=mess, status='pending').exists():
             raise ValidationError({"detail": "You already have a pending request to this mess."})
@@ -322,6 +359,8 @@ class InviteResponseView(APIView):
     """
     POST /api/v1/user/invites/accept   {invite_code}
     POST /api/v1/user/invites/decline  {invite_code}
+
+    Accepting joins the season the manager chose when inviting.
     """
     permission_classes = [permissions.IsAuthenticated]
     accept = True
@@ -329,7 +368,7 @@ class InviteResponseView(APIView):
     def post(self, request):
         code = str(request.data.get('invite_code', '')).strip().upper()
         invite = (
-            MessMemberShipInvitation.objects.select_related('mess')
+            MessMemberShipInvitation.objects.select_related('mess', 'season')
             .filter(invite_code=code, user=request.user, status='pending')
             .first()
         )
@@ -342,10 +381,16 @@ class InviteResponseView(APIView):
             invite.save(update_fields=['status', 'responded_at', 'updated_at'])
             return Response({"message": "Invite declined."})
 
-        if is_member_of(request.user, invite.mess):
-            raise ValidationError({"detail": f"You're already a member of {invite.mess.name}."})
+        season = invite.season
+        if season is None:
+            raise ValidationError({"detail": "The season of this invite was deleted. Ask the manager for a new invite."})
+        reason = season_closed_reason(season)
+        if reason:
+            raise ValidationError({"detail": f"{reason} Ask the manager for a new invite."})
+        if is_member_of(request.user, season):
+            raise ValidationError({"detail": f"You're already a member of {invite.mess.name} ({season.name})."})
         with transaction.atomic():
-            membership = join_active_season(request.user, invite.mess)
+            membership = join_season(request.user, season)
             invite.status = 'accepted'
             invite.responded_at = timezone.now()
             invite.save(update_fields=['status', 'responded_at', 'updated_at'])
@@ -354,7 +399,7 @@ class InviteResponseView(APIView):
                 status='cancelled', responded_at=timezone.now(), response_message='Cancelled: user joined via invite.',
             )
             set_current_membership(request.user, membership)
-        return Response({"message": f"Joined {invite.mess.name}.", "current": membership_summary(membership, membership.id)})
+        return Response({"message": f"Joined {invite.mess.name} ({season.name}).", "current": membership_summary(membership, membership.id)})
 
 
 class LeaveMessView(APIView):
@@ -410,6 +455,8 @@ class SwitchMembershipView(APIView):
             raise ValidationError({"detail": f"You left {label}, so it can't be your current membership."})
         if state == 'disabled':
             raise ValidationError({"detail": f"Your membership in {label} was disabled by its manager."})
+        if membership.season.is_disabled:
+            raise ValidationError({"detail": f"{label} is disabled by its manager, so it can't be your current season."})
 
         set_current_membership(request.user, membership)
         return Response({"message": f"Switched to {label}.", "current": membership_summary(membership, membership.id)})
@@ -420,29 +467,34 @@ class SwitchMembershipView(APIView):
 # ---------------------------------------------------------------------------
 
 class MemberLookupView(APIView):
-    """GET /api/v1/admin/member-lookup?query=<email or phone>"""
+    """
+    GET /api/v1/admin/member-lookup?query=<email or phone>
+
+    ``joined_season_ids`` = the running seasons of this mess the user already
+    belongs to; ``available`` = there's a running season they can be invited to.
+    """
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        get_managed_membership(request.user)
+        manager = get_managed_membership(request.user)
         user = find_user(request.query_params.get('query'))
         if not user:
             raise NotFound("No account matches that email or phone.")
-        manager = get_active_membership(request.user)
-        already_member = is_member_of(user, manager.mess)
+        running = running_seasons(manager.mess)
+        joined = list(usable_memberships(user).filter(season__in=running).values_list('season_id', flat=True))
         return Response({
             **user_summary(user),
-            # Users can belong to several messes; only members of this one can't be invited.
-            "available": not already_member,
-            "current_mess": manager.mess.name if already_member else None,
+            "available": running.exclude(pk__in=joined).exists(),
+            "joined_season_ids": joined,
         })
 
 
 class AdminInviteView(APIView):
     """
-    GET    /api/v1/admin/invites               every invite sent by this mess (any status)
-    POST   /api/v1/admin/invites   {user_id}    invite a user
-    DELETE /api/v1/admin/invites   {invite_id}  revoke a pending invite
+    GET    /api/v1/admin/invites                           every invite sent by this mess (any status)
+    POST   /api/v1/admin/invites   {user_id, season_id?}    invite a user to a running season
+                                                           (default: the season the manager works in)
+    DELETE /api/v1/admin/invites   {invite_id}              revoke a pending invite
     """
     permission_classes = [permissions.IsAuthenticated]
 
@@ -455,13 +507,14 @@ class AdminInviteView(APIView):
             "user_id": str(invite.user_id),
             "user_name": invite.user.full_name,
             "user_email": invite.user.email,
+            **season_ref(invite.season),
             "created_at": invite.invited_at,
             "responded_at": invite.responded_at,
         }
 
     def get(self, request):
         membership = get_managed_membership(request.user)
-        invites = MessMemberShipInvitation.objects.select_related('user').filter(mess=membership.mess).order_by('-invited_at')
+        invites = MessMemberShipInvitation.objects.select_related('user', 'season').filter(mess=membership.mess).order_by('-invited_at')
         return Response([self._serialize(i) for i in invites])
 
     def post(self, request):
@@ -470,12 +523,13 @@ class AdminInviteView(APIView):
             user = User.objects.get(id=int(request.data.get('user_id')))
         except (User.DoesNotExist, TypeError, ValueError):
             raise ValidationError({"user_id": "User not found."})
-        if is_member_of(user, membership.mess):
-            raise ValidationError({"detail": f"{user.full_name} is already a member of this mess."})
+        season = target_season(membership, request.data.get('season_id'))
+        if is_member_of(user, season):
+            raise ValidationError({"detail": f"{user.full_name} is already a member of {season.name}."})
 
-        invite = MessMemberShipInvitation.objects.filter(mess=membership.mess, user=user, status='pending').first()
+        invite = MessMemberShipInvitation.objects.filter(mess=membership.mess, user=user, season=season, status='pending').first()
         if not invite:
-            invite = MessMemberShipInvitation.objects.create(mess=membership.mess, user=user, invited_by=request.user)
+            invite = MessMemberShipInvitation.objects.create(mess=membership.mess, user=user, season=season, invited_by=request.user)
         return Response(self._serialize(invite), status=status.HTTP_201_CREATED)
 
     def delete(self, request):
@@ -495,7 +549,7 @@ class AdminJoinRequestListView(APIView):
     def get(self, request):
         membership = get_managed_membership(request.user)
         requests_qs = (
-            MessMemberShipRequest.objects.select_related('user')
+            MessMemberShipRequest.objects.select_related('user', 'season')
             .filter(mess=membership.mess)
             .order_by('-requested_at')
         )
@@ -507,6 +561,8 @@ class AdminJoinRequestListView(APIView):
                 "user_name": r.user.full_name,
                 "user_email": r.user.email,
                 "phone": r.user.phone,
+                # The season the user was added to; null until approved.
+                **season_ref(r.season),
                 "created_at": r.requested_at,
                 "responded_at": r.responded_at,
             }
@@ -515,7 +571,12 @@ class AdminJoinRequestListView(APIView):
 
 
 class AdminJoinRequestDecisionView(APIView):
-    """POST /api/v1/admin/join-requests/decision  {request_id, decision: accepted|rejected}"""
+    """
+    POST /api/v1/admin/join-requests/decision  {request_id, decision: accepted|rejected, season_id?}
+
+    Accepting adds the user to the running season ``season_id`` (default: the
+    season the manager works in) and records it on the request.
+    """
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
@@ -530,16 +591,24 @@ class AdminJoinRequestDecisionView(APIView):
         )
         if not join_request:
             raise NotFound("Pending request not found.")
+        name = join_request.user.full_name
 
-        with transaction.atomic():
-            if decision == 'accepted':
-                if is_member_of(join_request.user, membership.mess):
-                    raise ValidationError({"detail": f"{join_request.user.full_name} is already a member of this mess."})
-                join_active_season(join_request.user, membership.mess)
-            join_request.status = 'approved' if decision == 'accepted' else 'rejected'
+        if decision == 'rejected':
+            join_request.status = 'rejected'
             join_request.responded_at = timezone.now()
             join_request.save(update_fields=['status', 'responded_at', 'updated_at'])
-        return Response({"message": f"Request {decision}."})
+            return Response({"message": f"{name}'s request was rejected."})
+
+        season = target_season(membership, request.data.get('season_id'))
+        if is_member_of(join_request.user, season):
+            raise ValidationError({"detail": f"{name} is already a member of {season.name}."})
+        with transaction.atomic():
+            join_season(join_request.user, season)
+            join_request.status = 'approved'
+            join_request.season = season
+            join_request.responded_at = timezone.now()
+            join_request.save(update_fields=['status', 'season', 'responded_at', 'updated_at'])
+        return Response({"message": f"{name} joined {season.name}."})
 
 
 class AdminMemberListView(APIView):
@@ -669,59 +738,3 @@ class AdminTransferOwnershipView(APIView):
                 mess.acting_manager = None
             mess.save(update_fields=['manager', 'acting_manager', 'updated_at'])
         return Response({"message": f"{name} is now the primary manager. You're a regular member now."})
-
-
-class AdminSeasonView(APIView):
-    """
-    GET  /api/v1/admin/seasons          all seasons of this mess
-    POST /api/v1/admin/seasons  {name}  close the active season and start a new one
-
-    Every member of the closing season who has not left gets a fresh
-    membership in the new season, so no season's data depends on another.
-    Members whose current membership was the old season's move to the new one;
-    the old season stays editable through its memberships.
-    """
-    permission_classes = [permissions.IsAuthenticated]
-
-    @staticmethod
-    def _serialize(season):
-        return {
-            "id": season.id, "name": season.name, "start_date": season.start_date,
-            "end_date": season.end_date, "is_active": season.is_active,
-        }
-
-    def get(self, request):
-        membership = get_managed_membership(request.user)
-        seasons = membership.mess.seasons.order_by('-start_date', '-id')
-        return Response([self._serialize(s) for s in seasons])
-
-    def post(self, request):
-        membership = get_managed_membership(request.user)
-        name = str(request.data.get('name', '')).strip()
-        if not name:
-            raise ValidationError({"name": "Season name is required."})
-        mess = membership.mess
-        today = timezone.now().date()
-
-        with transaction.atomic():
-            old_season = membership.season
-            carried_users = list(
-                MessMemberShip.objects.filter(season=old_season, status='active', left_at__isnull=True)
-                .values_list('user_id', flat=True)
-            )
-            old_season.is_active = False
-            old_season.end_date = today
-            old_season.save(update_fields=['is_active', 'end_date', 'updated_at'])
-
-            new_season = MessSeason.objects.create(mess=mess, name=name, start_date=today, is_active=True)
-            new_memberships = MessMemberShip.objects.bulk_create([
-                MessMemberShip(user_id=user_id, mess=mess, season=new_season, status='active')
-                for user_id in carried_users
-            ])
-            for new_membership in new_memberships:
-                User.objects.filter(pk=new_membership.user_id, current_membership__season=old_season).update(current_membership=new_membership)
-
-        return Response(
-            {"message": "New season started.", "season": self._serialize(new_season), "members_carried": len(carried_users)},
-            status=status.HTTP_201_CREATED,
-        )

@@ -59,7 +59,7 @@ class MultiMembershipAPITests(APITestCase):
         self.as_user(self.alice)
         self.assertRejected(self.client.post('/api/v1/user/join-requests', {'mess_id': self.green}, format='json'), "You're already a member of Green House.")
         self.as_user(self.mia)
-        self.assertRejected(self.client.post('/api/v1/admin/invites', {'user_id': self.alice.id}, format='json'), 'Alice is already a member of this mess.')
+        self.assertRejected(self.client.post('/api/v1/admin/invites', {'user_id': self.alice.id}, format='json'), 'Alice is already a member of July 2026.')
         lookup = self.client.get('/api/v1/admin/member-lookup', {'query': 'alice@test.com'}).data
         self.assertFalse(lookup['available'])
 
@@ -112,8 +112,9 @@ class MultiMembershipAPITests(APITestCase):
     def test_switch_to_an_older_season_which_stays_editable(self):
         self.as_user(self.mia)
         old = self.membership(self.mia, self.green)
-        self.client.post('/api/v1/admin/seasons', {'name': 'August 2026'}, format='json')
-        # The new season's membership became current for the manager…
+        august = self.client.post('/api/v1/admin/seasons', {'name': 'August 2026'}, format='json').data['season']
+        # The manager switches to the new season…
+        self.client.post(f"/api/v1/admin/seasons/{august['id']}/switch")
         self.assertEqual(self.client.get('/api/v1/user/mess').data['season']['name'], 'August 2026')
         # …and the old season can still be opened and edited.
         self.assertEqual(self.switch(old.id).status_code, 200)
@@ -121,12 +122,14 @@ class MultiMembershipAPITests(APITestCase):
         notice = self.client.post('/api/v1/admin/notices', {'title': 'Old season fix', 'description': 'x'}, format='json')
         self.assertEqual(notice.status_code, 201, notice.data)
 
-    def test_new_season_moves_members_current_membership(self):
+    def test_new_season_keeps_members_in_their_season_until_they_switch(self):
         self.as_user(self.alice)
         self.switch(self.membership(self.alice, self.green).id)
         self.as_user(self.mia)
         self.client.post('/api/v1/admin/seasons', {'name': 'August 2026'}, format='json')
         self.as_user(self.alice)
+        self.assertEqual(self.client.get('/api/v1/user/mess').data['season']['name'], 'July 2026')
+        self.switch(self.membership(self.alice, self.green).id)
         self.assertEqual(self.client.get('/api/v1/user/mess').data['season']['name'], 'August 2026')
 
     def test_switch_refusals(self):

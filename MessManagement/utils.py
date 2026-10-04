@@ -1,8 +1,14 @@
+import secrets
+import string
+from datetime import timedelta
 from decimal import Decimal
 
+from django.db import transaction
 from django.db.models import Count, Q, Subquery, Sum
 from rest_framework.exceptions import PermissionDenied
-from .models import MessMemberShip, MessSeason
+
+from AuthManagement.models import User
+from .models import Mess, MessMemberShip, MessSeason
 
 
 def get_verified_membership_and_season(request, require_write=False):
@@ -56,8 +62,8 @@ def get_verified_membership_and_season(request, require_write=False):
 
 
 def usable_memberships(user):
-    """Memberships the user can work in: not left and not disabled by a manager."""
-    return MessMemberShip.objects.select_related('mess', 'season').filter(user=user, status='active', left_at__isnull=True)
+    """Memberships the user can work in: not left, not disabled by a manager, in a season that isn't disabled."""
+    return MessMemberShip.objects.select_related('mess', 'season').filter(user=user, status='active', left_at__isnull=True, season__is_disabled=False)
 
 
 def get_active_membership(user):
@@ -86,6 +92,79 @@ def set_current_membership(user, membership):
     membership_id = membership.id if membership else None
     type(user).objects.filter(pk=user.pk).update(current_membership=membership_id)
     user.current_membership_id = membership_id
+
+
+def random_season_name(mess):
+    """`season-` + 3 random lowercase letters, unused in [mess]."""
+    taken = {name.lower() for name in mess.seasons.values_list('name', flat=True)}
+    while True:
+        name = 'season-' + ''.join(secrets.choice(string.ascii_lowercase) for _ in range(3))
+        if name not in taken:
+            return name
+
+
+def start_season(mess, name, start_date, source, move_current=False):
+    """
+    Creates a season of [mess] whose members are [source]'s members who
+    haven't left (a disabled member stays disabled). No other season ends.
+    With [move_current], users working in [source] switch to the new season.
+    Returns the new season and how many members were carried.
+    """
+    with transaction.atomic():
+        season = MessSeason.objects.create(mess=mess, name=name, start_date=start_date)
+        carried = list(MessMemberShip.objects.filter(season=source, left_at__isnull=True)) if source else []
+        created = MessMemberShip.objects.bulk_create([
+            MessMemberShip(user_id=m.user_id, mess=mess, season=season, status=m.status) for m in carried
+        ])
+        if move_current:
+            for membership in created:
+                User.objects.filter(pk=membership.user_id, current_membership__season=source).update(current_membership=membership)
+    return season, len(created)
+
+
+def move_current_off(season):
+    """
+    Users working in [season] (about to be disabled or deleted) move to their
+    newest usable membership in another season of the same mess, or to none
+    (then `get_active_membership` picks one on their next request).
+    """
+    for membership in MessMemberShip.objects.select_related('user').filter(season=season):
+        user = membership.user
+        if user.current_membership_id != membership.id:
+            continue
+        fallback = (
+            usable_memberships(user).filter(mess_id=season.mess_id).exclude(season=season)
+            .order_by('-season__start_date', '-season_id').first()
+        )
+        set_current_membership(user, fallback)
+
+
+def auto_create_due(mess, today):
+    """Whether [mess]'s auto-create day is [today] and it hasn't run today."""
+    if not mess.auto_create_season or mess.last_auto_season_on == today:
+        return False
+    if mess.auto_create_season_day == 0:
+        return (today + timedelta(days=1)).month != today.month
+    return today.day == mess.auto_create_season_day
+
+
+def run_auto_create_seasons(today):
+    """
+    For every mess due today: creates a `season-xyz` from its active season
+    (its newest enabled one if none is running) and switches the members
+    working in that season to the new one. Returns the created seasons.
+    """
+    created = []
+    for mess in Mess.objects.filter(auto_create_season=True):
+        if not auto_create_due(mess, today):
+            continue
+        source = mess.active_season or mess.seasons.filter(is_disabled=False).order_by('-start_date', '-id').first()
+        with transaction.atomic():
+            season, _ = start_season(mess, random_season_name(mess), today, source, move_current=True)
+            mess.last_auto_season_on = today
+            mess.save(update_fields=['last_auto_season_on', 'updated_at'])
+        created.append(season)
+    return created
 
 
 def signed_amount_summary(queryset):

@@ -34,7 +34,7 @@ class MessSeasonSerializer(serializers.ModelSerializer):
         model = MessSeason
         fields = [
             'id', 'mess', 'name', 'start_date', 'end_date',
-            'is_active', 'created_at', 'updated_at',
+            'is_disabled', 'created_at', 'updated_at',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
 
@@ -141,7 +141,6 @@ class MessCreationSerializer(serializers.Serializer):
                 name='Season 1',
                 start_date=today,
                 end_date=None,
-                is_active=True,
             )
 
             # 3. Enrol the creator as an active manager

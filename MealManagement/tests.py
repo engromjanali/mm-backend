@@ -22,7 +22,7 @@ class MealApiTests(TestCase):
         )
         self.season = MessSeason.objects.create(
             mess=self.mess, name='Season 1',
-            start_date=date(2020, 1, 1), end_date=None, is_active=True,
+            start_date=date(2020, 1, 1), end_date=None,
         )
 
         self.manager_user = User.objects.create_user(
@@ -219,7 +219,7 @@ class MealTestBase(TestCase):
     def setUp(self):
         self.client = APIClient()
         self.mess = Mess.objects.create(name='Test Mess')
-        self.season = MessSeason.objects.create(mess=self.mess, name='Season 1', start_date=date(2020, 1, 1), is_active=True)
+        self.season = MessSeason.objects.create(mess=self.mess, name='Season 1', start_date=date(2020, 1, 1))
         self.manager_user = User.objects.create_user(email='manager@test.com', phone='0171111111', full_name='Manager Mia', password='pass12345')
         self.alice_user = User.objects.create_user(email='alice@test.com', phone='0172222222', full_name='Alice', password='pass12345')
         self.mess.manager = self.manager_user

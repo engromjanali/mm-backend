@@ -1,5 +1,6 @@
 import secrets
 
+from django.core.validators import MaxValueValidator
 from django.db import models
 from AuthManagement.models import User
 
@@ -12,12 +13,18 @@ class Mess(models.Model):
     # keeps authority over every season's data.
     manager = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='managed_messes')
     acting_manager = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='acting_managed_messes')
+    # Auto-create: on this day of every month (1–28, or 0 = the month's last
+    # day) a new season is created from the active season and members move to it.
+    auto_create_season = models.BooleanField(default=False)
+    auto_create_season_day = models.PositiveSmallIntegerField(default=0, validators=[MaxValueValidator(28)])
+    last_auto_season_on = models.DateField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     @property
     def active_season(self):
-        return self.seasons.filter(is_active=True).order_by('-start_date', '-id').first()
+        """The newest running season (not ended, not disabled): where new members join."""
+        return self.seasons.filter(end_date__isnull=True, is_disabled=False).order_by('-start_date', '-id').first()
 
     def role_of(self, user_id):
         if self.manager_id == user_id:
@@ -31,16 +38,29 @@ class Mess(models.Model):
 
 
 class MessSeason(models.Model):
+    """
+    A period meals, deposits and costs are counted in. A mess can run several
+    seasons at once; each user works in the one their current membership
+    points to. Data can't be dated after ``end_date`` (null while running). A
+    disabled season keeps its data but nobody can work in it.
+    """
     mess = models.ForeignKey(Mess, on_delete=models.CASCADE, related_name='seasons')
     name = models.CharField(max_length=100)
     start_date = models.DateField()
     end_date = models.DateField(default=None,null=True,blank=True)
-    is_active = models.BooleanField(default=True)
+    is_disabled = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = 'mess_seasons'
+
+    @property
+    def status(self):
+        """`disabled`, `ended` or `running`."""
+        if self.is_disabled:
+            return 'disabled'
+        return 'running' if self.end_date is None else 'ended'
 
 
 
@@ -69,6 +89,8 @@ class MessMemberShipRequest(models.Model):
     mess = models.ForeignKey(Mess, on_delete=models.CASCADE, related_name='mess_requests')
     # `cancelled` = withdrawn by the user (or made moot when they joined by invite).
     status = models.CharField(max_length=20, choices=[('pending', 'Pending'), ('approved', 'Approved'), ('rejected', 'Rejected'), ('cancelled', 'Cancelled')], default='pending')
+    # The season the manager added the user to; set when the request is approved.
+    season = models.ForeignKey(MessSeason, on_delete=models.SET_NULL, null=True, blank=True, related_name='join_requests')
     requested_at = models.DateTimeField(auto_now_add=True)
     responded_at = models.DateTimeField(blank=True, null=True)
     response_message = models.TextField(blank=True, null=True)
@@ -89,6 +111,8 @@ class MessMemberShipInvitation(models.Model):
     mess = models.ForeignKey(Mess, on_delete=models.CASCADE, related_name='mess_invitations')
     invited_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='sent_invitations')
     invite_code = models.CharField(max_length=16, unique=True, default=generate_invite_code)
+    # The season the user joins when they accept.
+    season = models.ForeignKey(MessSeason, on_delete=models.SET_NULL, null=True, blank=True, related_name='invitations')
     status = models.CharField(max_length=20, choices=[('pending', 'Pending'), ('accepted', 'Accepted'), ('declined', 'Declined'), ('revoked', 'Revoked')], default='pending')
     invited_at = models.DateTimeField(auto_now_add=True)
     responded_at = models.DateTimeField(blank=True, null=True)

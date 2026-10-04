@@ -167,6 +167,30 @@ can't be your current membership.` / `Your membership in … was disabled by its
 
 Joining a mess you're already in is refused (`You're already a member of Green House.`).
 
+### Invites & Join Requests — the manager picks the season
+New members join a **running** season (not ended, not disabled) the manager chooses.
+`season_id` is optional; when it's empty the season the manager works in is used.
+
+- **`GET {base_url}/api/v1/admin/member-lookup?query=alice@test.com`** →
+  `{"id", "name", "email", "phone", "available", "joined_season_ids": [3]}`: the running
+  seasons the user is already in; `available` = there's a running season left to invite them to.
+- **`POST {base_url}/api/v1/admin/invites`** `{"user_id": 7, "season_id": 4}` →
+  `201 {"id", "invite_code", "status", "user_id", "user_name", "user_email", "season_id": 4, "season_name": "August 2026", ...}`.
+- **`POST {base_url}/api/v1/user/invites/accept`** `{"invite_code": "A1B2C3D4"}` joins the
+  invite's season → `200 {"message": "Joined Green House (August 2026).", "current": {...}}`.
+- **`POST {base_url}/api/v1/admin/join-requests/decision`**
+  `{"request_id": 9, "decision": "accepted", "season_id": 4}` →
+  `200 {"message": "Alice joined August 2026."}`; the request keeps `season_id` / `season_name`.
+  Rejecting needs no `season_id`.
+
+Admin invite and join-request lists, and the user's `invites` / `join_requests` in
+`membership/status`, include `season_id` and `season_name` (`null` for a request until it's approved).
+
+Errors (`400`): `{"season_id": "August 2026 has ended. Choose a running season."}` /
+`… is disabled. Choose a running season.` / `Season not found in this mess.`;
+`{"detail": "Alice is already a member of August 2026."}`; on accept,
+`{"detail": "August 2026 has ended. Ask the manager for a new invite."}`.
+
 ---
 
 ## 1b. My Mess API

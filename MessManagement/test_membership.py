@@ -126,11 +126,12 @@ class MembershipFlowTests(APITestCase):
         old_season = mess.active_season
         response = self.client.post('/api/v1/admin/seasons', {'name': 'August 2026'}, format='json')
         self.assertEqual(response.status_code, 201)
-        self.assertEqual(response.data['members_carried'], 2)
+        self.assertEqual(response.data['message'], 'August 2026 created with 2 members.')
 
+        # The old season keeps running next to the new one.
         old_season.refresh_from_db()
-        self.assertFalse(old_season.is_active)
-        new_season = MessSeason.objects.get(is_active=True)
+        self.assertEqual(old_season.status, 'running')
+        new_season = MessSeason.objects.get(name='August 2026')
         self.assertEqual(
             set(MessMemberShip.objects.filter(season=new_season).values_list('user__email', flat=True)),
             {'manager@test.com', 'alice@test.com'},
