@@ -5,10 +5,11 @@ from decimal import Decimal
 
 from django.db import transaction
 from django.db.models import Count, Q, Subquery, Sum
+from django.utils import timezone
 from rest_framework.exceptions import PermissionDenied
 
 from AuthManagement.models import User
-from .models import Mess, MessMemberShip, MessSeason
+from .models import INVITE_AND_REQUEST_LIFETIME, Mess, MessMemberShip, MessMemberShipInvitation, MessMemberShipRequest, MessSeason
 
 
 def get_verified_membership_and_season(request, require_write=False):
@@ -92,6 +93,19 @@ def set_current_membership(user, membership):
     membership_id = membership.id if membership else None
     type(user).objects.filter(pk=user.pk).update(current_membership=membership_id)
     user.current_membership_id = membership_id
+
+
+def expire_stale_invites_and_requests():
+    """
+    Marks pending invitations and join requests older than
+    ``INVITE_AND_REQUEST_LIFETIME`` as ``expired``. Called before they're
+    listed or acted on, so no scheduled job is needed.
+    """
+    cutoff = timezone.now() - INVITE_AND_REQUEST_LIFETIME
+    MessMemberShipInvitation.objects.filter(status='pending', invited_at__lt=cutoff).update(status='expired', updated_at=timezone.now())
+    MessMemberShipRequest.objects.filter(status='pending', requested_at__lt=cutoff).update(
+        status='expired', updated_at=timezone.now(), response_message='Expired: not answered within 7 days.',
+    )
 
 
 def random_season_name(mess):

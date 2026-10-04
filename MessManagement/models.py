@@ -1,8 +1,12 @@
 import secrets
+from datetime import timedelta
 
 from django.core.validators import MaxValueValidator
 from django.db import models
 from AuthManagement.models import User
+
+# A pending invitation or join request expires this long after it was sent.
+INVITE_AND_REQUEST_LIFETIME = timedelta(days=7)
 
 class Mess(models.Model):
     name = models.CharField(max_length=100)
@@ -87,8 +91,9 @@ class MessMemberShip(models.Model):
 class MessMemberShipRequest(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='user_requests')
     mess = models.ForeignKey(Mess, on_delete=models.CASCADE, related_name='mess_requests')
-    # `cancelled` = withdrawn by the user (or made moot when they joined by invite).
-    status = models.CharField(max_length=20, choices=[('pending', 'Pending'), ('approved', 'Approved'), ('rejected', 'Rejected'), ('cancelled', 'Cancelled')], default='pending')
+    # `cancelled` = withdrawn by the user (or made moot when they joined by invite);
+    # `expired` = still pending INVITE_AND_REQUEST_LIFETIME after it was sent.
+    status = models.CharField(max_length=20, choices=[('pending', 'Pending'), ('approved', 'Approved'), ('rejected', 'Rejected'), ('cancelled', 'Cancelled'), ('expired', 'Expired')], default='pending')
     # The season the manager added the user to; set when the request is approved.
     season = models.ForeignKey(MessSeason, on_delete=models.SET_NULL, null=True, blank=True, related_name='join_requests')
     requested_at = models.DateTimeField(auto_now_add=True)
@@ -99,6 +104,10 @@ class MessMemberShipRequest(models.Model):
 
     class Meta:
         db_table = 'mess_membership_requests'
+
+    @property
+    def expires_at(self):
+        return self.requested_at + INVITE_AND_REQUEST_LIFETIME
 
     
 
@@ -113,7 +122,8 @@ class MessMemberShipInvitation(models.Model):
     invite_code = models.CharField(max_length=16, unique=True, default=generate_invite_code)
     # The season the user joins when they accept.
     season = models.ForeignKey(MessSeason, on_delete=models.SET_NULL, null=True, blank=True, related_name='invitations')
-    status = models.CharField(max_length=20, choices=[('pending', 'Pending'), ('accepted', 'Accepted'), ('declined', 'Declined'), ('revoked', 'Revoked')], default='pending')
+    # `expired` = still pending INVITE_AND_REQUEST_LIFETIME after it was sent.
+    status = models.CharField(max_length=20, choices=[('pending', 'Pending'), ('accepted', 'Accepted'), ('declined', 'Declined'), ('revoked', 'Revoked'), ('expired', 'Expired')], default='pending')
     invited_at = models.DateTimeField(auto_now_add=True)
     responded_at = models.DateTimeField(blank=True, null=True)
     Invitation_message = models.TextField(blank=True, null=True)
@@ -122,6 +132,10 @@ class MessMemberShipInvitation(models.Model):
 
     class Meta:
         db_table = 'mess_membership_invitations'
+
+    @property
+    def expires_at(self):
+        return self.invited_at + INVITE_AND_REQUEST_LIFETIME
 
 
 
