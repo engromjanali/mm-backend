@@ -1,0 +1,13 @@
+{% extends "admin/index.html" %}
+{% load i18n %}
+
+{% block nav-sidebar %}{% include "admin/nav_sidebar.html" %}{% endblock %}
+
+{% block content_title %}
+<div class="mm-page-heading">
+  <div><p class="mm-eyebrow">{% translate "Workspace" %}</p><h1>{{ title }}</h1></div>
+  {% for app in app_list %}{% if app.app_label == 'ContentManagement' %}{% for model in app.models %}{% if model.object_name == 'AppSetting' and model.admin_url %}
+  <a class="mm-settings-link changelink" href="{{ model.admin_url }}">{% translate "App settings" %}</a>
+  {% endif %}{% endfor %}{% endif %}{% endfor %}
+</div>
+{% endblock %}

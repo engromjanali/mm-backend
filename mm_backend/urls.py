@@ -20,6 +20,11 @@ from django.conf.urls.static import static
 from django.urls import path, include
 from django.http import HttpResponse
 
+admin.site.site_header = 'Mess Management'
+admin.site.site_title = 'Mess Management admin'
+admin.site.index_title = 'Overview'
+admin.site.site_url = None
+
 
 def testfunc(request):
     return HttpResponse("this is a test api")
