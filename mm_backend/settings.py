@@ -71,11 +71,14 @@ INSTALLED_APPS = [
     'MealManagement',
     'FundManagement',
     'DepositManagement',
+    'ContentManagement',
 ]
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'corsheaders.middleware.CorsMiddleware',
+    # After CORS so the 503 still carries CORS headers for the web app.
+    'ContentManagement.middleware.MaintenanceModeMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',

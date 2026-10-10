@@ -43,8 +43,8 @@ class UserProfileSerializer(AliasInputMixin, serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ["id", "photo", "full_name", "email", "phone", "password", "address", "lat", "long", "active_mess_id"]
-        read_only_fields = ["id"]
+        fields = ["id", "photo", "full_name", "email", "phone", "password", "address", "lat", "long", "active_mess_id", "deletion_scheduled_for"]
+        read_only_fields = ["id", "deletion_scheduled_for"]
 
     def get_active_mess_id(self, obj):
         from MessManagement.utils import get_active_membership

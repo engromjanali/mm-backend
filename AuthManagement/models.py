@@ -1,11 +1,16 @@
 import hashlib
 import hmac
+from datetime import timedelta
 
 from django.conf import settings
 from django.contrib.auth.base_user import AbstractBaseUser, BaseUserManager
 from django.contrib.auth.models import PermissionsMixin
 from django.db import models
 from django.utils import timezone
+
+# A requested account deletion takes effect this long after the request; the
+# user can cancel it until then.
+ACCOUNT_DELETION_GRACE = timedelta(days=60)
 
 
 class UserManager(BaseUserManager):
@@ -53,6 +58,9 @@ class User(AbstractBaseUser, PermissionsMixin):
     current_membership = models.ForeignKey(
         'MessManagement.MessMemberShip', on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
     )
+    # Account deletion the user asked for; nothing is deleted automatically.
+    deletion_requested_at = models.DateTimeField(null=True, blank=True)
+    deletion_reason = models.TextField(blank=True)
 
     objects = UserManager()
 
@@ -64,6 +72,11 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     class Meta:
         db_table = 'users'
+
+    @property
+    def deletion_scheduled_for(self):
+        """When the requested deletion takes effect, or None."""
+        return self.deletion_requested_at + ACCOUNT_DELETION_GRACE if self.deletion_requested_at else None
 
 
 class PasswordResetOTP(models.Model):

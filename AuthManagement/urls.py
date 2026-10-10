@@ -9,13 +9,14 @@ from .views import (
     SignUpView,
     UpdateProfileView,
     testfunc,
-    config
 )
+from ContentManagement.views import AppConfigView
 
 app_name = "auth_management"
 
 urlpatterns = [
-    path('config', config, name='config'),
+    # Older app builds read the config here; it now lives at /api/v1/app/config.
+    path('config', AppConfigView.as_view(), name='config'),
     path("test", testfunc, name="test"),
     path("sign-in", SignInView.as_view(), name="sign-in"),
     path("sign-up", SignUpView.as_view(), name="sign-up"),

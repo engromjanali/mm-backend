@@ -1,16 +1,17 @@
 import secrets
 from datetime import timedelta
+from zoneinfo import ZoneInfo
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.mail import send_mail
 from django.db import transaction
-from django.http import HttpResponse, JsonResponse
+from django.http import HttpResponse
 from django.utils import timezone
 from rest_framework import generics, permissions, status
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from django.views.decorators.csrf import csrf_exempt
 
 from .authentication import (
     REFRESH_TOKEN,
@@ -33,14 +34,6 @@ User = get_user_model()
 
 def testfunc(request):
     return HttpResponse("this is a test api")
-
-@csrf_exempt
-def config(request):
-    return JsonResponse({
-        "message": "API configuration",
-        "version": "1.0.0",
-    })
-
 
 def authentication_response(user, message):
     return {
@@ -214,3 +207,50 @@ class UpdateProfileView(generics.RetrieveUpdateAPIView):
             "user": response.data,
         }
         return response
+
+
+class AccountDeletionView(APIView):
+    """
+    POST   /api/v1/user/account/delete  {password, reason?}  request deletion
+    DELETE /api/v1/user/account/delete                      keep the account (cancel)
+
+    The account is scheduled for deletion ``ACCOUNT_DELETION_GRACE`` (60 days)
+    after the request; until then the user can sign in and cancel. The primary
+    manager of a mess must hand over the role first.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        user = request.user
+        if user.deletion_requested_at:
+            raise ValidationError({"detail": f"Your account is already scheduled for deletion on {_local_date(user.deletion_scheduled_for)}."})
+        password = str(request.data.get("password") or "")
+        if not password:
+            raise ValidationError({"password": "Enter your password to confirm."})
+        if not user.check_password(password):
+            raise ValidationError({"password": "Password is incorrect."})
+        managed = user.managed_messes.first()
+        if managed:
+            raise ValidationError({"detail": f"You're the manager of {managed.name}. Make another member the manager before deleting your account."})
+
+        user.deletion_requested_at = timezone.now()
+        user.deletion_reason = str(request.data.get("reason") or "").strip()[:1000]
+        user.save(update_fields=["deletion_requested_at", "deletion_reason"])
+        return Response({
+            "message": f"Your account will be deleted on {_local_date(user.deletion_scheduled_for)}. Sign in before then to keep it.",
+            "deletion_scheduled_for": user.deletion_scheduled_for,
+        })
+
+    def delete(self, request):
+        user = request.user
+        if not user.deletion_requested_at:
+            raise ValidationError({"detail": "Your account isn't scheduled for deletion."})
+        user.deletion_requested_at = None
+        user.deletion_reason = ""
+        user.save(update_fields=["deletion_requested_at", "deletion_reason"])
+        return Response({"message": "Deletion cancelled. Your account stays."})
+
+
+def _local_date(value):
+    """A datetime as the messes' local date, e.g. `03-12-2026`."""
+    return timezone.localtime(value, ZoneInfo(settings.MESS_TIME_ZONE)).strftime("%d-%m-%Y")

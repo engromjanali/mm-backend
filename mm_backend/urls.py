@@ -27,7 +27,9 @@ def testfunc(request):
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('',testfunc,name='test'),
+    path('api/v1/app/', include('ContentManagement.urls')),
     path('api/v1/auth/', include('AuthManagement.urls')),
+    path('api/v1/user/', include('AuthManagement.user_urls')),
     path('api/v1/user/', include('MessManagement.user_urls')),
     path('api/v1/admin/', include('MessManagement.admin_urls')),
     path('api/v1/user/', include('DepositManagement.user_urls')),
