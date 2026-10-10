@@ -8,6 +8,7 @@ from CostManagement.models import Cost
 from DepositManagement.models import Deposit
 from FundManagement.models import Fund
 from MealManagement.models import Meals
+from MessManagement.models import Mess
 from .models import MessMemberShip
 
 
@@ -75,3 +76,47 @@ class MyMessAPITests(APITestCase):
         self.assertEqual((response.status_code, str(response.data['detail'])), (400, 'You are not connected to an active mess.'))
         self.client.force_authenticate(user=None)
         self.assertIn(self.client.get('/api/v1/user/mess').status_code, (401, 403))
+
+    def test_manager_and_acting_manager_can_update_mess_details(self):
+        for user in (self.manager, self.bob):
+            self.client.force_authenticate(user=user)
+            response = self.client.patch('/api/v1/user/mess', {'name': 'Updated House', 'address': 'New address', 'email': 'house@test.com', 'phone': '01755555555'}, format='json')
+            self.assertEqual(response.status_code, 200, response.data)
+            self.mess.refresh_from_db()
+            self.assertEqual((self.mess.name, self.mess.address, self.mess.email, self.mess.phone), ('Updated House', 'New address', 'house@test.com', '01755555555'))
+
+    def test_member_and_anonymous_users_cannot_update_mess(self):
+        self.client.force_authenticate(user=self.alice)
+        self.assertEqual(self.client.patch('/api/v1/user/mess', {'name': 'Unauthorized'}, format='json').status_code, 403)
+        self.client.force_authenticate(user=None)
+        self.assertIn(self.client.patch('/api/v1/user/mess', {'name': 'Unauthorized'}, format='json').status_code, (401, 403))
+        self.mess.refresh_from_db()
+        self.assertEqual(self.mess.name, 'Green House')
+
+    def test_update_validates_details_and_cannot_change_leadership(self):
+        self.client.force_authenticate(user=self.manager)
+        for data in ({'name': ' '}, {'name': 'x' * 101}, {'email': 'invalid'}, {'phone': '1' * 21}, {'address': 'x' * 256}):
+            self.assertEqual(self.client.patch('/api/v1/user/mess', data, format='json').status_code, 400)
+        response = self.client.patch('/api/v1/user/mess', {'address': '', 'email': '', 'phone': '', 'manager': self.alice.id, 'acting_manager': self.alice.id}, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.mess.refresh_from_db()
+        self.assertEqual((self.mess.manager_id, self.mess.acting_manager_id), (self.manager.id, self.bob.id))
+        self.assertEqual(self.mess.name, 'Green House')
+
+    def test_update_cannot_target_another_mess(self):
+        other = Mess.objects.create(name='Other House', manager=self.alice)
+        self.client.force_authenticate(user=self.manager)
+        response = self.client.patch('/api/v1/user/mess', {'id': other.id, 'mess_id': other.id, 'name': 'My updated mess'}, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        other.refresh_from_db()
+        self.mess.refresh_from_db()
+        self.assertEqual(other.name, 'Other House')
+        self.assertEqual(self.mess.name, 'My updated mess')
+
+    def test_disabled_manager_cannot_update_mess(self):
+        self.manager_m.status = 'disabled'
+        self.manager_m.save()
+        self.client.force_authenticate(user=self.manager)
+        self.assertEqual(self.client.patch('/api/v1/user/mess', {'name': 'Unauthorized'}, format='json').status_code, 403)
+        self.mess.refresh_from_db()
+        self.assertEqual(self.mess.name, 'Green House')

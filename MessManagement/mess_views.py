@@ -5,7 +5,7 @@ Any member (the manager included) sees the mess info, the season, the
 leadership's contacts, the season's members and a snapshot of the season's
 numbers. User endpoints live under ``/api/v1/user/``.
 """
-from rest_framework import permissions
+from rest_framework import permissions, serializers
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -13,6 +13,8 @@ from rest_framework.views import APIView
 from DepositManagement.models import Deposit
 from FundManagement.models import Fund
 from MealManagement.utils import season_meal_rate
+from MessManagement.membership_views import get_managed_membership
+from MessManagement.models import Mess
 from .membership_views import MANAGER_ROLES
 from .models import MessMemberShip
 from .utils import get_active_membership, signed_amount_summary
@@ -48,6 +50,12 @@ def _season_stats(season, mess, member_count):
 # User endpoints  (/api/v1/user/...)
 # ---------------------------------------------------------------------------
 
+class MessDetailsUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Mess
+        fields = ('name', 'address', 'email', 'phone')
+
+
 class MyMessView(APIView):
     """
     GET /api/v1/user/mess
@@ -57,6 +65,13 @@ class MyMessView(APIView):
     the caller may do (edit, transfer leadership, leave).
     """
     permission_classes = [permissions.IsAuthenticated]
+
+    def patch(self, request):
+        membership = get_managed_membership(request.user)
+        serializer = MessDetailsUpdateSerializer(membership.mess, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
 
     def get(self, request):
         membership = get_active_membership(request.user)
