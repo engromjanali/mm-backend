@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import AppSetting, ContentPage, Faq
+from ContentManagement.models import AppSetting, ContentPage, Faq, SupportChannel
 
 
 @admin.register(AppSetting)
@@ -9,7 +9,6 @@ class AppSettingAdmin(admin.ModelAdmin):
     fieldsets = (
         ("App version", {"fields": ("latest_version", "minimum_version", "update_message", "android_store_url", "ios_store_url")}),
         ("Maintenance", {"fields": ("maintenance_mode", "maintenance_message", "maintenance_until")}),
-        ("Support", {"fields": ("support_email",)}),
     )
     list_display = ["__str__", "latest_version", "minimum_version", "maintenance_mode", "updated_at"]
 
@@ -32,3 +31,15 @@ class FaqAdmin(admin.ModelAdmin):
     list_filter = ["language", "is_active"]
     list_editable = ["order", "is_active"]
     search_fields = ["question", "answer"]
+
+
+@admin.register(SupportChannel)
+class SupportChannelAdmin(admin.ModelAdmin):
+    list_display = ['name', 'kind', 'destination', 'order', 'is_active']
+    list_filter = ['kind', 'is_active']
+    list_editable = ['order', 'is_active']
+    search_fields = ['name', 'destination']
+    fieldsets = (
+        ('Contact', {'fields': ('name', 'kind', 'destination', 'logo')}),
+        ('Visibility', {'fields': ('is_active', 'order')}),
+    )

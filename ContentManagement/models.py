@@ -1,6 +1,12 @@
 from django.core.cache import cache
-from django.core.validators import RegexValidator
-from django.db import models
+import re
+from urllib.parse import quote, urlsplit
+
+from django.core.exceptions import ValidationError
+from django.core.validators import FileExtensionValidator, RegexValidator, URLValidator, validate_email
+from django.db import models, transaction
+from django.db.models.signals import post_delete
+from django.dispatch import receiver
 
 LANGUAGES = [('en', 'English'), ('bn', 'Bengali'), ('ar', 'Arabic')]
 DEFAULT_LANGUAGE = 'en'
@@ -90,3 +96,78 @@ class Faq(models.Model):
 
     def __str__(self):
         return self.question
+
+
+def validate_support_logo(value):
+    if value.size > 2 * 1024 * 1024:
+        raise ValidationError('Use a logo smaller than 2 MB.')
+
+
+class SupportChannel(models.Model):
+    KINDS = [('email', 'Email'), ('telegram', 'Telegram'), ('whatsapp', 'WhatsApp'), ('phone', 'Phone'), ('website', 'Website'), ('other', 'Other')]
+
+    name = models.CharField(max_length=100)
+    kind = models.CharField(max_length=20, choices=KINDS)
+    destination = models.CharField(max_length=500, help_text='Email address, Telegram username or https://t.me link, phone number (WhatsApp needs country code), or an HTTP/HTTPS link.')
+    logo = models.ImageField(upload_to='support_logos/', blank=True, validators=[FileExtensionValidator(['png', 'jpg', 'jpeg', 'webp']), validate_support_logo], help_text='Optional PNG, JPEG or WebP, up to 2 MB.')
+    order = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        db_table = 'support_channels'
+        ordering = ['order', 'id']
+
+    def __str__(self):
+        return self.name
+
+    def clean(self):
+        super().clean()
+        self.destination = self.destination.strip()
+        try:
+            if self.kind == 'email':
+                validate_email(self.destination)
+            elif self.kind in {'phone', 'whatsapp'}:
+                self.destination = re.sub(r'[\s()-]', '', self.destination)
+                pattern = r'\+?[1-9]\d{6,14}' if self.kind == 'whatsapp' else r'\+?\d{6,15}'
+                if not re.fullmatch(pattern, self.destination):
+                    raise ValidationError('Enter a valid phone number. WhatsApp numbers must include the country code, without a leading zero.')
+            elif self.kind == 'telegram' and not self.destination.startswith('https://'):
+                self.destination = self.destination.lstrip('@')
+                if not re.fullmatch(r'[A-Za-z0-9_]{5,32}', self.destination):
+                    raise ValidationError('Enter a Telegram username or an https://t.me link.')
+            else:
+                URLValidator(schemes=['http', 'https'])(self.destination)
+                parsed = urlsplit(self.destination)
+                if parsed.username or parsed.password:
+                    raise ValidationError('Links must not contain login credentials.')
+                if self.kind == 'telegram' and (parsed.scheme != 'https' or parsed.hostname != 't.me' or not parsed.path.strip('/')):
+                    raise ValidationError('Use an https://t.me link.')
+        except ValidationError as error:
+            raise ValidationError({'destination': error.messages}) from error
+
+    @property
+    def contact_url(self):
+        if self.kind == 'email':
+            return f'mailto:{quote(self.destination, safe="@.+")}'
+        if self.kind == 'phone':
+            return f'tel:{self.destination}'
+        if self.kind == 'whatsapp':
+            return f'https://wa.me/{self.destination.lstrip("+")}'
+        if self.kind == 'telegram' and not self.destination.startswith('https://'):
+            return f'https://t.me/{self.destination}'
+        return self.destination
+
+    def save(self, *args, **kwargs):
+        update_fields = kwargs.get('update_fields')
+        old_logo = SupportChannel.objects.filter(pk=self.pk).values_list('logo', flat=True).first() if self.pk and (update_fields is None or 'logo' in update_fields) else None
+        super().save(*args, **kwargs)
+        if old_logo and old_logo != self.logo.name:
+            storage = self.logo.storage
+            transaction.on_commit(lambda: storage.delete(old_logo))
+
+
+@receiver(post_delete, sender=SupportChannel)
+def delete_support_logo(sender, instance, **kwargs):
+    if instance.logo:
+        storage, name = instance.logo.storage, instance.logo.name
+        transaction.on_commit(lambda: storage.delete(name))

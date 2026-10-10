@@ -5,12 +5,13 @@ No login needed (the app reads these before sign-in, e.g. on the splash and
 login screens). Text comes in the app's language — ``?lang=`` or the
 ``X-localization`` header the app sends — falling back to English.
 """
+from django.db.models import Q
 from rest_framework import permissions
 from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import DEFAULT_LANGUAGE, LANGUAGES, AppSetting, ContentPage, Faq
+from ContentManagement.models import DEFAULT_LANGUAGE, LANGUAGES, AppSetting, ContentPage, Faq, SupportChannel
 
 SUPPORTED_LANGUAGES = {code for code, _ in LANGUAGES}
 
@@ -24,7 +25,10 @@ def request_language(request):
     return DEFAULT_LANGUAGE
 
 
-def config_json(setting):
+def config_json(setting, request=None):
+    channels = list(SupportChannel.objects.filter(Q(is_active=True) | Q(kind='email')))
+    email_channels = [channel for channel in channels if channel.kind == 'email']
+    support_email = next((channel.destination for channel in email_channels if channel.is_active), '') if email_channels else setting.support_email
     return {
         "message": "API configuration",
         # Kept for older app builds that read only `version`.
@@ -39,7 +43,17 @@ def config_json(setting):
             "message": setting.maintenance_message,
             "until": setting.maintenance_until,
         },
-        "support_email": setting.support_email,
+        "support_email": support_email,
+        "support_channels": [
+            {
+                'name': channel.name,
+                'kind': channel.kind,
+                'destination': channel.destination,
+                'url': channel.contact_url,
+                'logo_url': request.build_absolute_uri(channel.logo.url) if request and channel.logo else channel.logo.url if channel.logo else '',
+            }
+            for channel in channels if channel.is_active
+        ],
     }
 
 
@@ -57,7 +71,7 @@ class AppConfigView(PublicView):
     """
 
     def get(self, request):
-        return Response(config_json(AppSetting.current()))
+        return Response(config_json(AppSetting.current(), request))
 
 
 class ContentPageView(PublicView):
