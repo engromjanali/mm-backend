@@ -9,7 +9,7 @@ from .membership_views import (
     PublicMessListView,
     SwitchMembershipView,
 )
-from .mess_views import MyMessView
+from .mess_views import MessLocationSearchView, MyMessView
 from .notice_views import NoticeListView
 
 urlpatterns = [
@@ -19,6 +19,7 @@ urlpatterns = [
     path('membership/leave', LeaveMessView.as_view(), name='user-membership-leave'),
     path('membership/switch', SwitchMembershipView.as_view(), name='user-membership-switch'),
     path('mess', MyMessView.as_view(), name='user-mess'),
+    path('mess/location-search', MessLocationSearchView.as_view(), name='user-mess-location-search'),
     path('join-requests', JoinRequestView.as_view(), name='user-join-requests'),
     path('join-requests/<int:pk>', JoinRequestView.as_view(), name='user-join-request-cancel'),
     path('invites/accept', InviteResponseView.as_view(accept=True), name='user-invite-accept'),

@@ -33,6 +33,9 @@ class Mess(models.Model):
     email = models.EmailField(unique=False, blank=True, default='')
     phone = models.CharField(max_length=20, unique=False, blank=True, default='')
     address = models.CharField(max_length=255, blank=True, default='')
+    map_url = models.URLField(max_length=500, blank=True, default='')
+    latitude = models.DecimalField(max_digits=10, decimal_places=7, blank=True, null=True)
+    longitude = models.DecimalField(max_digits=10, decimal_places=7, blank=True, null=True)
     # Leadership lives on the mess (not on a season membership) so the manager
     # keeps authority over every season's data.
     manager = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='managed_messes')
@@ -176,8 +179,3 @@ class Notices(models.Model):
             models.UniqueConstraint(fields=['season'], condition=models.Q(is_pinned=True), name='one_pinned_notice_per_season'),
         ]
 
-
-
-
-
-    

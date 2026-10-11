@@ -38,6 +38,7 @@ if not SECRET_KEY:
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv('DJANGO_DEBUG', 'False').lower() in {'1', 'true', 'yes'}
+GOOGLE_MAPS_API_KEY = os.getenv('GOOGLE_MAPS_API_KEY', '')
 
 ALLOWED_HOSTS = ['localhost', '127.0.0.1', '.vercel.app', '192.168.0.212', '192.168.0.109']
 ALLOWED_HOSTS += [

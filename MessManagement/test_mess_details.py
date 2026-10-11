@@ -1,6 +1,9 @@
 from datetime import date
 from decimal import Decimal
+import json
+from unittest.mock import patch
 
+from django.test import override_settings
 from rest_framework.test import APITestCase
 
 from AuthManagement.models import User
@@ -37,7 +40,7 @@ class MyMessAPITests(APITestCase):
         response = self.get_mess(self.alice)
         self.assertEqual(response.status_code, 200, response.data)
         data = response.data
-        self.assertEqual((data['name'], data['address'], data['season']['name'], data['my_role']), ('Green House', 'Mirpur 10', 'July 2026', 'member'))
+        self.assertEqual((data['name'], data['address'], data['map_url'], data['season']['name'], data['my_role']), ('Green House', 'Mirpur 10', '', 'July 2026', 'member'))
         self.assertEqual(data['manager']['name'], 'Manager Mia')
         self.assertEqual(data['acting_manager']['phone'], '01733333333')
         # Manager first, then acting manager, then the rest by name.
@@ -120,3 +123,35 @@ class MyMessAPITests(APITestCase):
         self.assertEqual(self.client.patch('/api/v1/user/mess', {'name': 'Unauthorized'}, format='json').status_code, 403)
         self.mess.refresh_from_db()
         self.assertEqual(self.mess.name, 'Green House')
+
+    def test_manager_can_set_google_maps_location(self):
+        self.client.force_authenticate(user=self.manager)
+        response = self.client.patch('/api/v1/user/mess', {'latitude': 23.8103, 'longitude': 90.4125}, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.mess.refresh_from_db()
+        self.assertEqual((self.mess.latitude, self.mess.longitude), (Decimal('23.8103000'), Decimal('90.4125000')))
+        self.assertEqual(self.mess.map_url, 'https://www.google.com/maps/search/?api=1&query=23.8103,90.4125')
+
+    def test_mess_location_requires_valid_coordinate_pair(self):
+        self.client.force_authenticate(user=self.manager)
+        for data in ({'latitude': 23.8}, {'longitude': 90.4}, {'latitude': 91, 'longitude': 90}, {'latitude': 23, 'longitude': 181}):
+            response = self.client.patch('/api/v1/user/mess', data, format='json')
+            self.assertEqual(response.status_code, 400, response.data)
+
+    @override_settings(GOOGLE_MAPS_API_KEY='server-secret')
+    @patch('MessManagement.mess_views.urlopen')
+    def test_manager_can_search_locations_without_exposing_key(self, mocked_urlopen):
+        class FakeResponse:
+            def __enter__(self): return self
+            def __exit__(self, *args): pass
+            def read(self): return json.dumps({'places': [{'displayName': {'text': 'Dhaka'}, 'formattedAddress': 'Dhaka, Bangladesh', 'location': {'latitude': 23.81, 'longitude': 90.41}}]}).encode()
+        mocked_urlopen.return_value = FakeResponse()
+        self.client.force_authenticate(user=self.manager)
+        response = self.client.get('/api/v1/user/mess/location-search?q=Dhaka')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data, [{'name': 'Dhaka', 'address': 'Dhaka, Bangladesh', 'latitude': 23.81, 'longitude': 90.41}])
+        self.assertNotIn('server-secret', str(response.data))
+
+    def test_member_cannot_search_locations(self):
+        self.client.force_authenticate(user=self.alice)
+        self.assertEqual(self.client.get('/api/v1/user/mess/location-search?q=Dhaka').status_code, 403)

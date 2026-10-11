@@ -6,6 +6,10 @@ leadership's contacts, the season's members and a snapshot of the season's
 numbers. User endpoints live under ``/api/v1/user/``.
 """
 from rest_framework import permissions, serializers
+from django.conf import settings
+import json
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -53,7 +57,21 @@ def _season_stats(season, mess, member_count):
 class MessDetailsUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Mess
-        fields = ('name', 'address', 'email', 'phone')
+        fields = ('name', 'address', 'email', 'phone', 'map_url', 'latitude', 'longitude')
+        read_only_fields = ('map_url',)
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        latitude = attrs.get('latitude', self.instance.latitude if self.instance else None)
+        longitude = attrs.get('longitude', self.instance.longitude if self.instance else None)
+        if (latitude is None) != (longitude is None):
+            raise serializers.ValidationError({'latitude': 'Latitude and longitude must be set together.', 'longitude': 'Latitude and longitude must be set together.'})
+        if latitude is not None and not -90 <= latitude <= 90:
+            raise serializers.ValidationError({'latitude': 'Latitude must be between -90 and 90.'})
+        if longitude is not None and not -180 <= longitude <= 180:
+            raise serializers.ValidationError({'longitude': 'Longitude must be between -180 and 180.'})
+        attrs['map_url'] = '' if latitude is None else f'https://www.google.com/maps/search/?api=1&query={format(latitude.normalize(), "f")},{format(longitude.normalize(), "f")}'
+        return attrs
 
 
 class MyMessView(APIView):
@@ -92,6 +110,9 @@ class MyMessView(APIView):
             "address": mess.address,
             "email": mess.email,
             "phone": mess.phone,
+            "map_url": mess.map_url,
+            "latitude": mess.latitude,
+            "longitude": mess.longitude,
             "created_at": mess.created_at,
             "season": {"id": season.id, "name": season.name, "start_date": season.start_date, "end_date": season.end_date},
             "my_role": role,
@@ -110,3 +131,41 @@ class MyMessView(APIView):
                 "can_leave": role != 'manager',
             },
         })
+
+
+class MessLocationSearchView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        get_managed_membership(request.user)
+        query = request.query_params.get('q', '').strip()
+        if len(query) < 3:
+            raise ValidationError({'q': 'Enter at least 3 characters.'})
+        if not settings.GOOGLE_MAPS_API_KEY:
+            raise ValidationError({'detail': 'Google Maps search is not configured.'})
+        payload = json.dumps({'textQuery': query, 'maxResultCount': 5}).encode()
+        places_request = Request(
+            'https://places.googleapis.com/v1/places:searchText',
+            data=payload,
+            headers={
+                'Content-Type': 'application/json',
+                'X-Goog-Api-Key': settings.GOOGLE_MAPS_API_KEY,
+                'X-Goog-FieldMask': 'places.displayName,places.formattedAddress,places.location',
+            },
+            method='POST',
+        )
+        try:
+            with urlopen(places_request, timeout=5) as response:
+                data = json.loads(response.read().decode())
+        except (HTTPError, URLError, TimeoutError, json.JSONDecodeError):
+            raise ValidationError({'detail': 'Location search is temporarily unavailable.'})
+        return Response([
+            {
+                'name': place.get('displayName', {}).get('text', ''),
+                'address': place.get('formattedAddress', ''),
+                'latitude': place.get('location', {}).get('latitude'),
+                'longitude': place.get('location', {}).get('longitude'),
+            }
+            for place in data.get('places', [])
+            if place.get('location', {}).get('latitude') is not None and place.get('location', {}).get('longitude') is not None
+        ])
