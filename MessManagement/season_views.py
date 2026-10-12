@@ -4,9 +4,10 @@ Season management APIs — manager / acting manager, under ``/api/v1/admin/seaso
 A mess can run several seasons at once. Each user works in the season their
 current membership points to and can switch between seasons any time (members
 through ``/user/membership/switch``, the manager here). A new season copies the
-members of a source season who haven't left; no other season ends. Ending a
-season stops records dated after its end date; disabling one keeps its data but
-nobody can work in it; deleting one removes all its meals, deposits and costs.
+active members of a source season who haven't left; no other season ends.
+Ending a season stops records dated after its end date; disabling one keeps its
+data but nobody can work in it; deleting one removes all its meals, deposits
+and costs.
 
 With auto-create on, ``run_auto_create_seasons`` creates a ``season-xyz`` on the
 chosen day of each month and switches the members to it. It runs nightly just
@@ -116,9 +117,9 @@ class AdminSeasonListView(APIView):
          {current_season_id, auto_create: {enabled, day}, seasons: [...]}
     POST /api/v1/admin/seasons  {name, start_date?, source_season_id?}
 
-    Creating copies the members of ``source_season_id`` (default: the season
-    the manager is working in) who haven't left; disabled members stay
-    disabled. No season ends and nobody switches — use ``/switch`` for that.
+    Creating copies the active members of ``source_season_id`` (default: the
+    season the manager is working in) who haven't left. No season ends and
+    nobody switches — use ``/switch`` for that.
     """
     permission_classes = [permissions.IsAuthenticated]
 

@@ -51,7 +51,7 @@ class SeasonManagementAPITests(APITestCase):
 
     # -- create ---------------------------------------------------------------
 
-    def test_new_season_copies_members_who_did_not_leave_and_ends_nothing(self):
+    def test_new_season_copies_only_active_members_who_did_not_leave_and_ends_nothing(self):
         self.as_user(self.bob)
         self.client.post('/api/v1/user/membership/leave')
         self.as_user(self.manager)
@@ -61,9 +61,8 @@ class SeasonManagementAPITests(APITestCase):
 
         august = self.create_season('August')
 
-        self.assertEqual(self.members_of(august), {'manager@test.com', 'alice@test.com'})
-        # A disabled member stays disabled in the new season.
-        self.assertEqual(MessMemberShip.objects.get(season=august, user=self.alice).status, 'inactive')
+        self.assertEqual(self.members_of(august), {'manager@test.com'})
+        self.assertFalse(MessMemberShip.objects.filter(season=august, user=self.alice).exists())
         self.july.refresh_from_db()
         self.assertEqual(self.july.status, 'running')
         # Nobody switches automatically.

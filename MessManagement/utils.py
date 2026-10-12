@@ -132,13 +132,13 @@ def random_season_name(mess):
 def start_season(mess, name, start_date, source, move_current=False):
     """
     Creates a season of [mess] whose members are [source]'s members who
-    haven't left (a disabled member stays disabled). No other season ends.
+    haven't left and aren't disabled. No other season ends.
     With [move_current], users working in [source] switch to the new season.
     Returns the new season and how many members were carried.
     """
     with transaction.atomic():
         season = MessSeason.objects.create(mess=mess, name=name, start_date=start_date)
-        carried = list(MessMemberShip.objects.filter(season=source, left_at__isnull=True)) if source else []
+        carried = list(MessMemberShip.objects.filter(season=source, status='active', left_at__isnull=True)) if source else []
         created = MessMemberShip.objects.bulk_create([
             MessMemberShip(user_id=m.user_id, mess=mess, season=season, status=m.status) for m in carried
         ])
