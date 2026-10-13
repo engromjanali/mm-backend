@@ -12,7 +12,7 @@ from DepositManagement.models import Deposit
 from FundManagement.models import Fund
 from MealManagement.models import Meals
 from MessManagement.models import Mess
-from .models import MessMemberShip
+from .models import MessMemberShip, MessSeason
 
 
 class MyMessAPITests(APITestCase):
@@ -155,3 +155,35 @@ class MyMessAPITests(APITestCase):
     def test_member_cannot_search_locations(self):
         self.client.force_authenticate(user=self.alice)
         self.assertEqual(self.client.get('/api/v1/user/mess/location-search?q=Dhaka').status_code, 403)
+
+    def test_member_financial_totals_are_only_visible_to_managers(self):
+        season = self.manager_m.season
+        alice_m = MessMemberShip.objects.get(user=self.alice)
+        for amount in ('2000', '500', '-300'):
+            Deposit.objects.create(season=season, performed_by=alice_m, amount=Decimal(amount))
+        Meals.objects.create(mess_season=season, mess_member=alice_m, date=season.start_date, lunch=Decimal('1.5'), dinner=1)
+        Cost.objects.create(season=season, performed_by=self.manager_m, amount=Decimal('250'))
+        for user in (self.manager, self.bob):
+            data = self.get_mess(user).data
+            rows = {row['id']: row for row in data['member_stats']}
+            self.assertEqual(rows[alice_m.id], {'id': alice_m.id, 'name': 'alice', 'deposit': 2200.0, 'meal': 2.5})
+            self.assertEqual((rows[self.manager_m.id]['deposit'], rows[self.manager_m.id]['meal']), (0, 0))
+            self.assertEqual(data['stats']['meal_rate'], 100)
+        self.assertNotIn('member_stats', self.get_mess(self.alice).data)
+
+    def test_member_totals_follow_selected_season_and_keep_departed_members(self):
+        alice_m = MessMemberShip.objects.get(user=self.alice)
+        Deposit.objects.create(season=self.manager_m.season, performed_by=alice_m, amount=Decimal('500'))
+        alice_m.left_at = self.manager_m.joined_at
+        alice_m.status = 'inactive'
+        alice_m.save()
+        rows = {row['id']: row for row in self.get_mess(self.manager).data['member_stats']}
+        self.assertEqual(rows[alice_m.id]['deposit'], 500)
+        other_season = MessSeason.objects.create(mess=self.mess, name='Other season', start_date=self.manager_m.season.start_date)
+        selected = MessMemberShip.objects.create(user=self.manager, mess=self.mess, season=other_season)
+        Deposit.objects.create(season=other_season, performed_by=selected, amount=Decimal('900'))
+        self.manager.current_membership = selected
+        self.manager.save(update_fields=['current_membership'])
+        data = self.get_mess(self.manager).data
+        self.assertEqual(data['season']['id'], other_season.id)
+        self.assertEqual(data['member_stats'], [{'id': selected.id, 'name': 'Manager Mia', 'deposit': 900.0, 'meal': 0.0}])

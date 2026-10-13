@@ -7,6 +7,7 @@ numbers. User endpoints live under ``/api/v1/user/``.
 """
 from rest_framework import permissions, serializers
 from django.conf import settings
+from django.db.models import Sum
 import json
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -16,6 +17,7 @@ from rest_framework.views import APIView
 
 from DepositManagement.models import Deposit
 from FundManagement.models import Fund
+from MealManagement.models import Meals
 from MealManagement.utils import season_meal_rate
 from MessManagement.membership_views import get_managed_membership
 from MessManagement.models import Mess
@@ -104,7 +106,17 @@ class MyMessView(APIView):
             key=lambda m: (ROLE_ORDER[mess.role_of(m.user_id)], m.user.full_name.lower()),
         )
 
+        member_stats = {}
+        if role in MANAGER_ROLES:
+            deposits = {row['performed_by_id']: row['total'] for row in Deposit.objects.filter(season=season).values('performed_by_id').annotate(total=Sum('amount'))}
+            meals = {row['mess_member_id']: row['total'] for row in Meals.objects.filter(mess_season=season).values('mess_member_id').annotate(total=Sum('total_meals'))}
+            member_stats['member_stats'] = [
+                {'id': m.id, 'name': m.user.full_name, 'deposit': float(deposits.get(m.id, 0)), 'meal': float(meals.get(m.id, 0))}
+                for m in MessMemberShip.objects.select_related('user').filter(season=season).order_by('user__full_name', 'id')
+            ]
+
         return Response({
+            **member_stats,
             "id": mess.id,
             "name": mess.name,
             "address": mess.address,
