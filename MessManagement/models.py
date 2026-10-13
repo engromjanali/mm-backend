@@ -179,3 +179,33 @@ class Notices(models.Model):
             models.UniqueConstraint(fields=['season'], condition=models.Q(is_pinned=True), name='one_pinned_notice_per_season'),
         ]
 
+
+class OpinionPeriod(models.Model):
+    season = models.ForeignKey(MessSeason, on_delete=models.CASCADE, related_name='opinion_periods')
+    title = models.CharField(max_length=120)
+    details = models.TextField()
+    start_date = models.DateField()
+    end_date = models.DateField()
+    accepting_messages = models.BooleanField(default=True)
+    visibility = models.CharField(max_length=20, choices=[('realtime', 'Realtime'), ('after_publish', 'After publish')], default='after_publish')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'opinion_periods'
+        ordering = ['-created_at', '-id']
+        constraints = [models.CheckConstraint(condition=models.Q(end_date__gte=models.F('start_date')), name='opinion_period_valid_dates')]
+
+
+class AnonymousOpinion(models.Model):
+    # Membership is checked before insertion; no author or membership is stored.
+    period = models.ForeignKey(OpinionPeriod, on_delete=models.CASCADE, related_name='opinions')
+    message = models.TextField()
+    is_published = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'anonymous_opinions'
+        ordering = ['-created_at', '-id']
+        indexes = [models.Index(fields=['period', 'is_published', '-id'], name='opinion_visibility_idx')]
+

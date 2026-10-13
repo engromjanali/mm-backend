@@ -11,6 +11,7 @@ from .membership_views import (
     MemberLookupView,
 )
 from .notice_views import AdminNoticeCreateView, AdminNoticeDetailView, AdminNoticePinView
+from MessManagement.opinion_views import AdminOpinionPeriodCreateView, AdminOpinionPeriodDetailView, AdminOpinionPublishView
 from .season_views import (
     AdminSeasonAutoCreateView,
     AdminSeasonDetailView,
@@ -40,4 +41,7 @@ urlpatterns = [
     path('notices', AdminNoticeCreateView.as_view(), name='admin-notices'),
     path('notices/<int:pk>', AdminNoticeDetailView.as_view(), name='admin-notice-detail'),
     path('notices/<int:pk>/pin', AdminNoticePinView.as_view(), name='admin-notice-pin'),
+    path('opinions', AdminOpinionPeriodCreateView.as_view(), name='admin-opinions'),
+    path('opinions/<int:pk>', AdminOpinionPeriodDetailView.as_view(), name='admin-opinion-detail'),
+    path('opinions/<int:pk>/publish', AdminOpinionPublishView.as_view(), name='admin-opinion-publish'),
 ]

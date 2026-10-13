@@ -11,6 +11,7 @@ from .membership_views import (
 )
 from .mess_views import MessLocationSearchView, MyMessView
 from .notice_views import NoticeListView
+from MessManagement.opinion_views import OpinionPeriodListView, OpinionMessagesView
 
 urlpatterns = [
     path('messes', PublicMessListView.as_view(), name='user-messes'),
@@ -25,4 +26,6 @@ urlpatterns = [
     path('invites/accept', InviteResponseView.as_view(accept=True), name='user-invite-accept'),
     path('invites/decline', InviteResponseView.as_view(accept=False), name='user-invite-decline'),
     path('notices', NoticeListView.as_view(), name='user-notices'),
+    path('opinions', OpinionPeriodListView.as_view(), name='user-opinions'),
+    path('opinions/<int:pk>/messages', OpinionMessagesView.as_view(), name='user-opinion-messages'),
 ]
