@@ -146,15 +146,18 @@ class MultiMembershipAPITests(APITestCase):
         blue = self.membership(self.alice, self.blue)
         self.switch(blue.id)
         self.client.post('/api/v1/user/membership/leave')
-        self.assertRejected(self.switch(blue.id), "You left Blue House (July 2026), so it can't be your current membership.")
+        response = self.switch(blue.id)
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data['current']['status'], 'left')
 
-    def test_leaving_falls_back_to_another_membership(self):
+    def test_leaving_keeps_previous_data_access(self):
         self.as_user(self.alice)
         self.assertEqual(self.client.get('/api/v1/user/mess').data['name'], 'Blue House')
         self.client.post('/api/v1/user/membership/leave')
-        self.assertEqual(self.client.get('/api/v1/user/mess').data['name'], 'Green House')
-        self.client.post('/api/v1/user/membership/leave')
-        self.assertRejected(self.client.get('/api/v1/user/mess'), 'You are not connected to an active mess.')
+        self.assertEqual(self.client.get('/api/v1/user/mess').data['name'], 'Blue House')
+        status = self.client.get('/api/v1/user/membership/status').data['current']
+        self.assertEqual((status['status'], status['can_switch']), ('left', True))
+        self.assertRejected(self.client.post('/api/v1/user/membership/leave'), 'You already left this season.')
 
     def test_manager_cannot_leave_their_mess(self):
         self.as_user(self.mia)

@@ -70,8 +70,8 @@ class MyMessAPITests(APITestCase):
         data = self.get_mess(self.manager).data
         self.assertEqual([m['name'] for m in data['members']], ['Manager Mia', 'Bob'])
         self.assertEqual(data['stats']['members'], 2)
-        # Alice has no active mess any more.
-        self.assertEqual(self.get_mess(self.alice).data, {'detail': 'You are not connected to an active mess.'})
+        # Alice can still open the season and see its previous data.
+        self.assertEqual(self.get_mess(self.alice).data['name'], self.mess.name)
 
     def test_requires_an_active_mess_and_login(self):
         loner = User.objects.create_user(email='loner@test.com', phone='01744444444', full_name='Loner', password='pass12345')

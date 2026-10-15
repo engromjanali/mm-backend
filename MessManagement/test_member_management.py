@@ -113,6 +113,22 @@ class MemberManagementAPITests(APITestCase):
         self.act('disable', self.alice_m)
         self.assertRejected(self.act('acting-manager', self.alice_m), "Alice isn't an active member. Enable them first.")
 
+    def test_assign_acting_manager_enables_member_in_every_season(self):
+        august = self.client.post('/api/v1/admin/seasons', {'name': 'August 2026'}, format='json').data['season']
+        self.alice_m.status = 'left'
+        self.alice_m.left_at = timezone.now()
+        self.alice_m.save()
+        self.client.post(f"/api/v1/admin/seasons/{august['id']}/switch")
+        alice_august = MessMemberShip.objects.get(user=self.alice, season_id=august['id'])
+
+        response = self.act('acting-manager', alice_august)
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.alice_m.refresh_from_db()
+        self.assertEqual((self.alice_m.status, self.alice_m.left_at), ('active', None))
+        self.as_user(self.alice)
+        self.assertEqual(self.client.post('/api/v1/user/membership/switch', {'membership_id': self.alice_m.id}, format='json').status_code, 200)
+
     # -- transfer ownership --------------------------------------------------
 
     def test_transfer_ownership(self):
@@ -126,6 +142,22 @@ class MemberManagementAPITests(APITestCase):
         self.assertRejected(self.act('transfer-ownership', self.alice_m), 'Only the manager or acting manager can do this.', 403)
         self.as_user(self.alice)
         self.assertEqual(self.client.get('/api/v1/user/mess').data['my_role'], 'manager')
+
+    def test_transfer_ownership_enables_new_manager_in_every_season(self):
+        august = self.client.post('/api/v1/admin/seasons', {'name': 'August 2026'}, format='json').data['season']
+        self.alice_m.status = 'left'
+        self.alice_m.left_at = timezone.now()
+        self.alice_m.save()
+        self.client.post(f"/api/v1/admin/seasons/{august['id']}/switch")
+        alice_august = MessMemberShip.objects.get(user=self.alice, season_id=august['id'])
+
+        response = self.act('transfer-ownership', alice_august)
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.alice_m.refresh_from_db()
+        self.assertEqual((self.alice_m.status, self.alice_m.left_at), ('active', None))
+        self.as_user(self.alice)
+        self.assertEqual(self.client.post('/api/v1/user/membership/switch', {'membership_id': self.alice_m.id}, format='json').status_code, 200)
 
     def test_transfer_guards(self):
         self.assertRejected(self.act('transfer-ownership', self.manager_m), "You're already the primary manager.")

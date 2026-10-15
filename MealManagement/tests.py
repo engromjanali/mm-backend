@@ -165,6 +165,18 @@ class MealApiTests(TestCase):
         self.assertTrue(all(r['membership_id'] == self.member.id for r in response.data['data']))
         self.assertEqual(response.data['summary']['total_meals'], 9)
 
+    def test_left_member_can_read_previous_meals(self):
+        self._seed()
+        headers = self.auth(self.member)
+        self.member.status = 'left'
+        self.member.left_at = timezone.now()
+        self.member.save()
+
+        response = self.client.get('/api/v1/meal/list', **headers)
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data['total_size'], 3)
+
     def test_list_exact_date_filter(self):
         self._seed()
         headers = self.auth(self.member)

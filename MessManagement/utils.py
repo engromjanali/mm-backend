@@ -17,7 +17,7 @@ from .models import INVITE_AND_REQUEST_LIFETIME, Mess, MessMemberShip, MessMembe
 def get_verified_membership_and_season(request, require_write=False):
     """
     Extracts Membership ID and Session ID from request headers,
-    verifies active membership for request.user and valid season for the mess,
+    verifies a non-disabled membership for request.user and valid season for the mess,
     and enforces role permissions for write operations (Manager or Acting Manager).
     """
     # 1. Extract Membership ID & Session ID headers (supporting multiple casing conventions)
@@ -47,7 +47,7 @@ def get_verified_membership_and_season(request, require_write=False):
 
     # 2. Verify Membership for request.user
     try:
-        membership = MessMemberShip.objects.get(id=membership_id, user=request.user, status='active')
+        membership = MessMemberShip.objects.get(id=membership_id, user=request.user, status__in=['active', 'left'])
     except MessMemberShip.DoesNotExist:
         raise PermissionDenied("Invalid or inactive membership for this user.")
 
@@ -65,8 +65,8 @@ def get_verified_membership_and_season(request, require_write=False):
 
 
 def usable_memberships(user):
-    """Memberships the user can work in: not left, not disabled by a manager, in a season that isn't disabled."""
-    return MessMemberShip.objects.select_related('mess', 'season').filter(user=user, status='active', left_at__isnull=True, season__is_disabled=False)
+    """Memberships the user can work in: not disabled by a manager, in a season that isn't disabled."""
+    return MessMemberShip.objects.select_related('mess', 'season').filter(user=user, status__in=['active', 'left'], season__is_disabled=False)
 
 
 def get_active_membership(user):

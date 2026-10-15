@@ -109,7 +109,7 @@ def target_season(manager, season_id):
 
 def membership_state(membership):
     """`active`, `disabled` (turned off by a manager) or `left`."""
-    if membership.left_at is not None:
+    if membership.status == 'left' or membership.left_at is not None:
         return 'left'
     return 'active' if membership.status == 'active' else 'disabled'
 
@@ -129,7 +129,7 @@ def membership_summary(membership, current_id=None):
         "joined_at": membership.joined_at,
         "left_at": membership.left_at,
         "is_current": current_id is not None and membership.id == current_id,
-        "can_switch": state == 'active' and not membership.season.is_disabled,
+        "can_switch": state != 'disabled' and not membership.season.is_disabled,
     }
 
 
@@ -426,9 +426,9 @@ class LeaveMessView(APIView):
     """
     POST /api/v1/user/membership/leave
 
-    Leaves the current membership's mess. The member will not be carried into
-    the next season, and their newest other membership (if any) becomes
-    current. The manager must hand over leadership before leaving.
+    Marks the current membership as left so the member will not be carried
+    into the next season. They keep access to this season's previous data.
+    The manager must hand over leadership before leaving.
     """
     permission_classes = [permissions.IsAuthenticated]
 
@@ -438,9 +438,11 @@ class LeaveMessView(APIView):
             raise ValidationError({"detail": "You are not connected to an active mess."})
         if membership.role == 'manager':
             raise ValidationError({"detail": "Transfer the manager role before leaving the mess."})
+        if membership.status == 'left':
+            raise ValidationError({"detail": "You already left this season."})
 
         with transaction.atomic():
-            membership.status = 'inactive'
+            membership.status = 'left'
             membership.left_at = timezone.now()
             membership.save(update_fields=['status', 'left_at', 'updated_at'])
             mess = membership.mess
@@ -455,8 +457,8 @@ class SwitchMembershipView(APIView):
     POST /api/v1/user/membership/switch  {membership_id}
 
     Makes one of the user's memberships current (saved on their profile);
-    every screen then shows that mess and season. Any membership they haven't
-    left and that isn't disabled can be chosen, including older seasons.
+    every screen then shows that mess and season. Any membership that isn't
+    disabled can be chosen, including left memberships and older seasons.
     """
     permission_classes = [permissions.IsAuthenticated]
 
@@ -471,8 +473,6 @@ class SwitchMembershipView(APIView):
 
         label = f"{membership.mess.name} ({membership.season.name})"
         state = membership_state(membership)
-        if state == 'left':
-            raise ValidationError({"detail": f"You left {label}, so it can't be your current membership."})
         if state == 'disabled':
             raise ValidationError({"detail": f"Your membership in {label} was disabled by its manager."})
         if membership.season.is_disabled:
@@ -721,6 +721,7 @@ class AdminActingManagerView(APIView):
             previous = mess.acting_manager
             mess.acting_manager = member.user
             mess.save(update_fields=['acting_manager', 'updated_at'])
+            MessMemberShip.objects.filter(user_id=member.user_id, mess_id=manager.mess_id).exclude(status='active', left_at__isnull=True).update(status='active', left_at=None, updated_at=timezone.now())
         message = f"{name} is now the acting manager."
         if previous is not None:
             message += f" {previous.full_name} is a regular member again."
@@ -763,4 +764,5 @@ class AdminTransferOwnershipView(APIView):
             if mess.acting_manager_id == member.user_id:
                 mess.acting_manager = None
             mess.save(update_fields=['manager', 'acting_manager', 'updated_at'])
+            MessMemberShip.objects.filter(user_id=member.user_id, mess_id=manager.mess_id).exclude(status='active', left_at__isnull=True).update(status='active', left_at=None, updated_at=timezone.now())
         return Response({"message": f"{name} is now the primary manager. You're a regular member now."})

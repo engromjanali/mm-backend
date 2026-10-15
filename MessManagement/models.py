@@ -95,7 +95,7 @@ class MessMemberShip(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='mess_memberships')
     mess = models.ForeignKey(Mess, on_delete=models.CASCADE, related_name='memberships')
     season = models.ForeignKey(MessSeason, on_delete=models.CASCADE, related_name='memberships')
-    status = models.CharField(max_length=20, choices=[('active', 'Active'), ('inactive', 'Inactive')], default='active')
+    status = models.CharField(max_length=20, choices=[('active', 'Active'), ('inactive', 'Inactive'), ('left', 'Left')], default='active')
     joined_at = models.DateTimeField(auto_now_add=True)
     left_at = models.DateTimeField(default=None, blank=True, null=True)
     updated_at = models.DateTimeField(auto_now=True)
