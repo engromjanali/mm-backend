@@ -76,11 +76,15 @@ class OpinionAPITests(APITestCase):
         self.assertEqual(self.submit().status_code, 403)
         self.assertEqual(AnonymousOpinion.objects.count(), 0)
 
-    def test_submission_uses_period_season_membership_instead_of_newest_season(self):
+    def test_submission_requires_period_to_belong_to_selected_current_season(self):
         newer = MessSeason.objects.create(mess=self.mess, name='New season', start_date=self.today + timedelta(days=1))
         self.assertEqual(self.submit().status_code, 201)
         membership = MessMemberShip.objects.create(user=self.member, mess=self.mess, season=newer)
         self.member.current_membership = membership
+        self.member.save(update_fields=['current_membership'])
+        self.assertFalse(self.overview().data['data'][0]['can_write'])
+        self.assertEqual(self.submit().status_code, 403)
+        self.member.current_membership = MessMemberShip.objects.get(user=self.member, season=self.season)
         self.member.save(update_fields=['current_membership'])
         self.assertTrue(self.overview().data['data'][0]['can_write'])
         self.assertEqual(self.submit().status_code, 201)

@@ -77,9 +77,9 @@ def _message_json(opinion):
     return {'id': opinion.id, 'period_id': opinion.period_id, 'message': opinion.message, 'created_at': opinion.created_at, 'is_published': opinion.is_published}
 
 
-def _period_json(period, member_season_ids):
+def _period_json(period, writable_season_id):
     today = timezone.localdate()
-    can_write = period.season_id in member_season_ids and period.accepting_messages and period.start_date <= today <= period.end_date
+    can_write = period.season_id == writable_season_id and period.accepting_messages and period.start_date <= today <= period.end_date
     return {
         'id': period.id, 'mess_id': period.season.mess_id, 'season_id': period.season_id, 'season_name': period.season.name,
         'title': period.title, 'details': period.details, 'start_date': period.start_date, 'end_date': period.end_date,
@@ -97,7 +97,7 @@ class OpinionPeriodListView(APIView):
         can_manage = _can_manage(request.user, mess)
         context = get_current_access(request.user)
         current_season = context.season if context and context.mess_id == mess.id else None
-        member_season_ids = set(MessMemberShip.objects.filter(user=request.user, mess=mess, status='active', left_at__isnull=True, season__is_disabled=False).values_list('season_id', flat=True))
+        writable_season_id = context.season_id if context and context.mess_id == mess.id and context.membership and context.membership.status == 'active' and context.membership.left_at is None else None
         visible = Q() if can_manage else Q(visibility='realtime')
         messages = AnonymousOpinion.objects.all()
         if not can_manage:
@@ -111,7 +111,7 @@ class OpinionPeriodListView(APIView):
             'mess_id': mess.id, 'can_manage': can_manage, 'can_create': can_manage and current_season is not None,
             'current_season_id': current_season.id if current_season else None,
             'next_page': pagination.page.next_page_number() if pagination.page.has_next() else None,
-            'data': [_period_json(period, member_season_ids) for period in page],
+            'data': [_period_json(period, writable_season_id) for period in page],
         })
 
 
@@ -135,9 +135,11 @@ class OpinionMessagesView(APIView):
             period = OpinionPeriod.objects.select_for_update().select_related('season__mess').filter(pk=pk).first()
             if period is None:
                 raise NotFound('Opinion period not found.')
-            membership = MessMemberShip.objects.select_for_update().filter(user=request.user, mess_id=period.season.mess_id, season_id=period.season_id, status='active', left_at__isnull=True, season__is_disabled=False).first()
+            user = type(request.user).objects.select_for_update().get(pk=request.user.pk)
+            context = get_current_access(user)
+            membership = MessMemberShip.objects.select_for_update().filter(pk=context.membership_id, user=user, season_id=period.season_id, status='active', left_at__isnull=True, season__is_disabled=False).first() if context and context.season_id == period.season_id and context.membership_id else None
             if membership is None:
-                raise PermissionDenied('Only active members of the season where this opinion period was created can submit opinions.')
+                raise PermissionDenied('Only active members of their current season can submit opinions.')
             today = timezone.localdate()
             if not period.accepting_messages or not period.start_date <= today <= period.end_date:
                 raise ValidationError({'detail': 'This opinion period is not accepting messages.'})
