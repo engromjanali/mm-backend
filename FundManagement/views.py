@@ -17,7 +17,7 @@ from rest_framework.views import APIView
 
 from MealManagement.utils import DATE_INPUT_FORMATS, apply_date_filters
 from MessManagement.membership_views import get_managed_membership
-from MessManagement.utils import get_active_membership, signed_amount_summary
+from MessManagement.utils import get_current_access, signed_amount_summary
 from .models import Fund
 
 
@@ -64,10 +64,10 @@ class FundListView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        membership = get_active_membership(request.user)
-        if not membership:
+        context = get_current_access(request.user)
+        if not context:
             raise PermissionDenied("You are not connected to an active mess.")
-        all_funds = mess_funds(membership.mess)
+        all_funds = mess_funds(context.mess)
         funds, _ = apply_date_filters(all_funds, request)
         return Response({
             "data": [fund_json(f) for f in funds],

@@ -43,7 +43,7 @@ class SeasonManagementAPITests(APITestCase):
 
     def current_season_id(self, user):
         user.refresh_from_db()
-        return user.current_membership.season_id if user.current_membership else None
+        return user.current_season_id
 
     def assertRejected(self, response, text, status_code=400):
         self.assertEqual(response.status_code, status_code, response.data)

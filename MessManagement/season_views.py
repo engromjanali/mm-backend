@@ -26,8 +26,8 @@ from DepositManagement.models import Deposit
 from MealManagement.models import Meals
 from MealManagement.utils import DATE_OUTPUT_FORMAT, parse_date_value
 from .membership_views import get_managed_membership, membership_state
-from .models import MessMemberShip, MessSeason
-from .utils import get_active_membership, move_current_off, set_current_membership, start_season, usable_memberships
+from .models import MessSeason
+from .utils import get_current_access, get_real_membership, move_current_off, set_current_context, start_season
 
 
 # ---------------------------------------------------------------------------
@@ -145,11 +145,9 @@ class AdminSeasonListView(APIView):
                 raise ValidationError({"source_season_id": "That season isn't in this mess."})
 
         season, carried = start_season(mess, name, start_date, source)
-        # The manager is a member of every season, even one copied from a season they weren't in.
-        _, added = MessMemberShip.objects.get_or_create(user=request.user, mess=mess, season=season, defaults={'status': 'active'})
         season = _mess_season(manager, season.pk)
         return Response(
-            {"message": f"{name} created with {carried + int(added)} members.", "season": season_json(season, manager.season_id)},
+            {"message": f"{name} created with {carried} members.", "season": season_json(season, manager.season_id)},
             status=status.HTTP_201_CREATED,
         )
 
@@ -180,13 +178,13 @@ class AdminSeasonDetailView(APIView):
     def delete(self, request, pk):
         manager = get_managed_membership(request.user)
         season = _mess_season(manager, pk)
-        if season.id == manager.season_id and not usable_memberships(request.user).filter(mess=manager.mess).exclude(season=season).exists():
+        if season.id == manager.season_id and not manager.mess.seasons.filter(is_disabled=False).exclude(pk=season.pk).exists():
             raise ValidationError({"detail": f"{season.name} is the only season you can work in. Create or enable another season before deleting it."})
 
         name = season.name
         move_current_off(season)
         season.delete()
-        current = get_active_membership(request.user)
+        current = get_current_access(request.user)
         return Response({
             "message": f"{name} and all its meals, deposits and costs were deleted.",
             "current_season_id": current.season_id if current else None,
@@ -272,14 +270,11 @@ class AdminSeasonSwitchView(APIView):
         if season.id == manager.season_id:
             raise ValidationError({"detail": f"You're already working in {season.name}."})
 
-        # The manager is a member of every season; add them if this one predates them.
-        membership, _ = MessMemberShip.objects.select_related('mess', 'season').get_or_create(
-            user=request.user, mess=manager.mess, season=season, defaults={'status': 'active'},
-        )
-        state = membership_state(membership)
-        if state != 'active':
+        membership = get_real_membership(request.user, season)
+        state = membership_state(membership) if membership else None
+        if state not in (None, 'active'):
             raise ValidationError({"detail": f"Your membership in {season.name} is {state}, so you can't work in it."})
-        set_current_membership(request.user, membership)
+        set_current_context(request.user, season, membership)
         return Response({"message": f"Now working in {season.name}.", "current_season_id": season.id})
 
 

@@ -53,10 +53,13 @@ class User(AbstractBaseUser, PermissionsMixin):
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
     date_joined = models.DateTimeField(default=timezone.now)
-    # The membership the user chose to work in (one per season, any number of
-    # messes). Null or no longer usable → the newest usable one is used.
+    # The real membership in the selected season. It is null when mess-level
+    # leadership grants access to a season the user never joined.
     current_membership = models.ForeignKey(
         'MessManagement.MessMemberShip', on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+    )
+    current_season = models.ForeignKey(
+        'MessManagement.MessSeason', on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
     )
     # Account deletion the user asked for; nothing is deleted automatically.
     deletion_requested_at = models.DateTimeField(null=True, blank=True)

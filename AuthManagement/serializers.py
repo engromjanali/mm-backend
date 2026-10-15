@@ -47,10 +47,10 @@ class UserProfileSerializer(AliasInputMixin, serializers.ModelSerializer):
         read_only_fields = ["id", "deletion_scheduled_for"]
 
     def get_active_mess_id(self, obj):
-        from MessManagement.utils import get_active_membership
+        from MessManagement.utils import get_current_access
 
-        membership = get_active_membership(obj)
-        return membership.mess_id if membership else None
+        context = get_current_access(obj)
+        return context.mess_id if context else None
 
     def validate_password(self, value):
         user = self.instance

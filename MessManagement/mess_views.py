@@ -23,7 +23,7 @@ from MessManagement.membership_views import get_managed_membership
 from MessManagement.models import Mess
 from .membership_views import MANAGER_ROLES
 from .models import MessMemberShip
-from .utils import get_active_membership, signed_amount_summary
+from .utils import get_current_access, signed_amount_summary
 
 # Members list order: manager, acting manager, then everyone else by name.
 ROLE_ORDER = {'manager': 0, 'acting_manager': 1, 'member': 2}
@@ -94,12 +94,12 @@ class MyMessView(APIView):
         return Response(serializer.data)
 
     def get(self, request):
-        membership = get_active_membership(request.user)
-        if not membership:
+        context = get_current_access(request.user)
+        if not context:
             raise ValidationError({"detail": "You are not connected to an active mess."})
-        mess = membership.mess
-        season = membership.season
-        role = membership.role
+        mess = context.mess
+        season = context.season
+        role = context.role
 
         members = sorted(
             MessMemberShip.objects.select_related('user').filter(season=season, status='active', left_at__isnull=True),
@@ -128,7 +128,10 @@ class MyMessView(APIView):
             "created_at": mess.created_at,
             "season": {"id": season.id, "name": season.name, "start_date": season.start_date, "end_date": season.end_date},
             "my_role": role,
-            "joined_at": membership.joined_at,
+            "joined_at": context.membership.joined_at if context.membership else None,
+            "is_manager": context.is_manager,
+            "is_member": context.is_member,
+            "is_acting_manager": context.is_acting_manager,
             "manager": _person(mess.manager),
             "acting_manager": _person(mess.acting_manager),
             "members": [
@@ -140,7 +143,7 @@ class MyMessView(APIView):
                 "can_edit": role in MANAGER_ROLES,
                 "can_transfer": role == 'manager',
                 # The manager must hand over leadership before leaving.
-                "can_leave": role != 'manager',
+                "can_leave": context.is_member and role != 'manager',
             },
         })
 

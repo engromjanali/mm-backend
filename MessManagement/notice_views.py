@@ -18,7 +18,7 @@ from rest_framework.views import APIView
 
 from .membership_views import get_managed_membership
 from .models import Notices
-from .utils import get_active_membership
+from .utils import get_current_access
 
 TITLE_MAX_LENGTH = Notices._meta.get_field('title').max_length
 DESCRIPTION_MAX_LENGTH = 2000
@@ -110,10 +110,10 @@ class NoticeListView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        membership = get_active_membership(request.user)
-        if not membership:
+        context = get_current_access(request.user)
+        if not context:
             raise ValidationError({"detail": "You are not connected to an active mess."})
-        notices = Notices.objects.filter(season=membership.season)
+        notices = Notices.objects.filter(season=context.season)
         return Response({"data": [notice_json(n) for n in notices]})
 
 

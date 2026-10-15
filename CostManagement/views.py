@@ -19,7 +19,7 @@ from rest_framework.views import APIView
 from MealManagement.utils import DATE_INPUT_FORMATS, validate_date_in_season
 from MessManagement.membership_views import get_managed_membership
 from MessManagement.models import MessMemberShip
-from MessManagement.utils import get_active_membership
+from MessManagement.utils import get_current_access
 from .models import Cost, CostBreakdown
 
 TIME_INPUT_FORMATS = ['%H:%M', '%H:%M:%S']
@@ -35,7 +35,7 @@ def cost_json(cost):
         "total": float(cost.amount),
         "note": cost.description or "",
         "items": [{"id": item.id, "product": item.name, "price": float(item.price)} for item in cost.breakdowns.all()],
-        "recorded_by": cost.recorded_by.user.full_name if cost.recorded_by else None,
+        "recorded_by": cost.recorded_by.full_name if cost.recorded_by else None,
         "created_at": cost.created_at,
         "updated_at": cost.updated_at,
     }
@@ -43,7 +43,7 @@ def cost_json(cost):
 
 def season_costs(season):
     return (
-        Cost.objects.select_related('performed_by__user', 'recorded_by__user')
+        Cost.objects.select_related('performed_by__user', 'recorded_by')
         .prefetch_related('breakdowns')
         .filter(season=season)
     )
@@ -108,15 +108,15 @@ class CostListView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        membership = get_active_membership(request.user)
-        if not membership:
+        context = get_current_access(request.user)
+        if not context:
             raise PermissionDenied("You are not connected to an active mess.")
-        costs = season_costs(membership.season)
+        costs = season_costs(context.season)
         # Separate queries: joining the products would repeat each entry's amount in the sum.
         totals = costs.aggregate(total=Sum('amount'), entries=Count('id'))
-        items = CostBreakdown.objects.filter(cost__season=membership.season).count()
+        items = CostBreakdown.objects.filter(cost__season=context.season).count()
         return Response({
-            "season": {"id": membership.season_id, "name": membership.season.name},
+            "season": {"id": context.season_id, "name": context.season.name},
             "data": [cost_json(c) for c in costs],
             "summary": {"total": float(totals['total'] or 0), "entries": totals['entries'], "items": items},
         })
@@ -143,7 +143,7 @@ class AdminCostCreateView(APIView):
             cost = Cost(
                 season=manager.season,
                 performed_by=member,
-                recorded_by=manager,
+                recorded_by=request.user,
                 date=data.get('date') or Cost._meta.get_field('date').get_default(),
                 time=data.get('time'),
                 description=data.get('note') or '',
@@ -184,7 +184,7 @@ class AdminCostDetailView(APIView):
             cost.time = data['time']
         if 'note' in data:
             cost.description = data['note'] or ''
-        cost.recorded_by = manager
+        cost.recorded_by = request.user
 
         with transaction.atomic():
             if 'items' in data:

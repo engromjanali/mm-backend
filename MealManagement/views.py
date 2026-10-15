@@ -9,7 +9,7 @@ from rest_framework.views import APIView
 
 from MessManagement.membership_views import get_managed_membership
 from MessManagement.models import MessMemberShip
-from MessManagement.utils import get_active_membership, get_verified_membership_and_season
+from MessManagement.utils import get_current_access, get_verified_membership_and_season
 from .models import Meals
 from .serializers import (
     AdminMealBulkSerializer,
@@ -215,7 +215,7 @@ class MealListView(APIView):
 
         queryset = Meals.objects.select_related('mess_member__user').filter(
             mess_season=season,
-            mess_member=membership,
+            mess_member_id=membership.id,
         )
         queryset, applied = apply_date_filters(queryset, request)
 
@@ -341,16 +341,17 @@ class MyMealListView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        membership = get_active_membership(request.user)
-        if not membership:
+        context = get_current_access(request.user)
+        if not context:
             raise ValidationError({"detail": "You are not connected to an active mess."})
-        season = membership.season
-        meals = Meals.objects.filter(mess_season=season, mess_member=membership)
+        season = context.season
+        meals = Meals.objects.filter(mess_season=season, mess_member_id=context.membership_id) if context.membership_id else Meals.objects.none()
         meal_rate, _, _ = season_meal_rate(season)
         my_total = meals.aggregate(total=Sum('total_meals'))['total'] or Decimal('0')
 
         return Response({
             "season": {"id": season.id, "name": season.name},
+            "is_member": context.is_member,
             "user_name": request.user.full_name,
             "meal_rate": float(meal_rate),
             "summary": {

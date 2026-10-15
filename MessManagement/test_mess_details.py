@@ -47,6 +47,21 @@ class MyMessAPITests(APITestCase):
         self.assertEqual([(m['name'], m['role']) for m in data['members']], [('Manager Mia', 'manager'), ('Bob', 'acting_manager'), ('alice', 'member')])
         self.assertEqual(data['permissions'], {'can_edit': False, 'can_transfer': False, 'can_leave': True})
 
+    def test_manager_sees_season_without_becoming_a_member(self):
+        historical = MessSeason.objects.create(mess=self.mess, name='Historical', start_date=date(2026, 1, 1))
+        self.client.force_authenticate(user=self.manager)
+        switched = self.client.post(f'/api/v1/admin/seasons/{historical.id}/switch')
+        self.assertEqual(switched.status_code, 200, switched.data)
+
+        data = self.client.get('/api/v1/user/mess').data
+
+        self.assertEqual(data['season']['id'], historical.id)
+        self.assertEqual((data['is_manager'], data['is_member'], data['is_acting_manager']), (True, False, False))
+        self.assertIsNone(data['joined_at'])
+        self.assertFalse(MessMemberShip.objects.filter(user=self.manager, season=historical).exists())
+        self.assertEqual(data['members'], [])
+        self.assertEqual(data['permissions'], {'can_edit': True, 'can_transfer': True, 'can_leave': False})
+
     def test_permissions_follow_role(self):
         self.assertEqual(self.get_mess(self.manager).data['permissions'], {'can_edit': True, 'can_transfer': True, 'can_leave': False})
         self.assertEqual(self.get_mess(self.bob).data['permissions'], {'can_edit': True, 'can_transfer': False, 'can_leave': True})
@@ -116,13 +131,13 @@ class MyMessAPITests(APITestCase):
         self.assertEqual(other.name, 'Other House')
         self.assertEqual(self.mess.name, 'My updated mess')
 
-    def test_disabled_manager_cannot_update_mess(self):
+    def test_leadership_access_does_not_depend_on_membership_status(self):
         self.manager_m.status = 'disabled'
         self.manager_m.save()
         self.client.force_authenticate(user=self.manager)
-        self.assertEqual(self.client.patch('/api/v1/user/mess', {'name': 'Unauthorized'}, format='json').status_code, 403)
+        self.assertEqual(self.client.patch('/api/v1/user/mess', {'name': 'Updated by leader'}, format='json').status_code, 200)
         self.mess.refresh_from_db()
-        self.assertEqual(self.mess.name, 'Green House')
+        self.assertEqual(self.mess.name, 'Updated by leader')
 
     def test_manager_can_set_google_maps_location(self):
         self.client.force_authenticate(user=self.manager)

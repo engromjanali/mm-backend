@@ -8,7 +8,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from MessManagement.models import AnonymousOpinion, Mess, MessMemberShip, OpinionPeriod
-from MessManagement.utils import get_active_membership
+from MessManagement.utils import get_current_access
 
 
 class OpinionPagination(PageNumberPagination):
@@ -41,20 +41,24 @@ def _read_mess(request):
         except (TypeError, ValueError):
             raise ValidationError({'mess_id': 'mess_id must be a number.'})
     else:
-        membership = get_active_membership(request.user) or memberships.order_by('-season__start_date', '-id').first()
-    if not membership:
+        context = get_current_access(request.user)
+        membership = context.membership if context else memberships.order_by('-season__start_date', '-id').first()
+        mess = context.mess if context else membership.mess if membership else None
+    if mess_id is not None:
+        mess = membership.mess if membership else Mess.objects.filter(pk=mess_id, manager=request.user).first() or Mess.objects.filter(pk=mess_id, acting_manager=request.user).first()
+    if not mess:
         raise PermissionDenied('You must belong to a season of this mess to view opinions.')
-    return membership.mess
+    return mess
 
 
 def _can_manage(user, mess):
-    return mess.role_of(user.id) in ('manager', 'acting_manager') and MessMemberShip.objects.filter(user=user, mess=mess, status='active', left_at__isnull=True, season__is_disabled=False).exists()
+    return mess.role_of(user.id) in ('manager', 'acting_manager')
 
 
 def _managed_mess(user, mess_id=None):
     if mess_id is None:
-        membership = get_active_membership(user)
-        mess = membership.mess if membership else None
+        context = get_current_access(user)
+        mess = context.mess if context else None
     else:
         mess = Mess.objects.filter(pk=mess_id).first()
     if mess is None or not _can_manage(user, mess):
@@ -91,8 +95,8 @@ class OpinionPeriodListView(APIView):
     def get(self, request):
         mess = _read_mess(request)
         can_manage = _can_manage(request.user, mess)
-        membership = get_active_membership(request.user)
-        current_season = membership.season if membership and membership.mess_id == mess.id else None
+        context = get_current_access(request.user)
+        current_season = context.season if context and context.mess_id == mess.id else None
         member_season_ids = set(MessMemberShip.objects.filter(user=request.user, mess=mess, status='active', left_at__isnull=True, season__is_disabled=False).values_list('season_id', flat=True))
         visible = Q() if can_manage else Q(visibility='realtime')
         messages = AnonymousOpinion.objects.all()
@@ -151,10 +155,10 @@ class AdminOpinionPeriodCreateView(APIView):
         data = serializer.validated_data
         if data['end_date'] < data['start_date']:
             raise ValidationError({'end_date': 'End date cannot be before start date.'})
-        membership = get_active_membership(request.user)
-        if membership is None or membership.mess_id != mess.id:
+        context = get_current_access(request.user)
+        if context is None or context.mess_id != mess.id:
             raise ValidationError({'detail': 'Select a season of this mess before opening an opinion period.'})
-        season = membership.season
+        season = context.season
         period = OpinionPeriod.objects.create(season=season, **data)
         return Response({'id': period.id}, status=status.HTTP_201_CREATED)
 

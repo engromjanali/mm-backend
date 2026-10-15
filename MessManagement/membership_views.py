@@ -41,7 +41,7 @@ from .models import (
     MessMemberShipRequest,
     MessSeason,
 )
-from .utils import expire_now, get_active_membership, set_current_membership, usable_memberships
+from .utils import expire_now, get_active_membership, get_current_access, get_real_membership, set_current_context, set_current_membership, usable_memberships
 
 MANAGER_ROLES = ('manager', 'acting_manager')
 
@@ -51,13 +51,13 @@ MANAGER_ROLES = ('manager', 'acting_manager')
 # ---------------------------------------------------------------------------
 
 def get_managed_membership(user):
-    """Active membership of a user who manages (or acts for) that mess."""
-    membership = get_active_membership(user)
-    if not membership:
+    """The selected season context of a manager or acting manager."""
+    context = get_current_access(user)
+    if not context:
         raise PermissionDenied("You are not connected to an active mess.")
-    if membership.role not in MANAGER_ROLES:
+    if context.role not in MANAGER_ROLES:
         raise PermissionDenied("Only the manager or acting manager can do this.")
-    return membership
+    return context
 
 
 def is_member_of(user, season):
@@ -114,8 +114,10 @@ def membership_state(membership):
     return 'active' if membership.status == 'active' else 'disabled'
 
 
-def membership_summary(membership, current_id=None):
+def membership_summary(membership, current_id=None, user=None):
     state = membership_state(membership)
+    mess = membership.mess
+    user_id = user.id if user else membership.user_id
     return {
         "membership_id": membership.id,
         "mess_id": membership.mess_id,
@@ -124,12 +126,43 @@ def membership_summary(membership, current_id=None):
         "season_name": membership.season.name,
         "season_start_date": membership.season.start_date,
         "season_end_date": membership.season.end_date,
-        "role": membership.role,
+        "role": mess.role_of(user_id),
         "status": state,
         "joined_at": membership.joined_at,
         "left_at": membership.left_at,
         "is_current": current_id is not None and membership.id == current_id,
         "can_switch": state != 'disabled' and not membership.season.is_disabled,
+        "is_manager": mess.manager_id == user_id,
+        "is_member": True,
+        "is_acting_manager": mess.acting_manager_id == user_id,
+    }
+
+
+def access_summary(user, season, membership, current_season_id):
+    if membership:
+        data = membership_summary(membership, user=user)
+        data['is_current'] = season.id == current_season_id
+        data['can_switch'] = (data['status'] != 'disabled' or season.mess.manager_id == user.id or season.mess.acting_manager_id == user.id) and not season.is_disabled
+        return data
+    is_manager = season.mess.manager_id == user.id
+    is_acting_manager = season.mess.acting_manager_id == user.id
+    return {
+        "membership_id": None,
+        "mess_id": season.mess_id,
+        "mess_name": season.mess.name,
+        "season_id": season.id,
+        "season_name": season.name,
+        "season_start_date": season.start_date,
+        "season_end_date": season.end_date,
+        "role": 'manager' if is_manager else 'acting_manager' if is_acting_manager else 'member',
+        "status": None,
+        "joined_at": None,
+        "left_at": None,
+        "is_current": season.id == current_season_id,
+        "can_switch": (is_manager or is_acting_manager) and not season.is_disabled,
+        "is_manager": is_manager,
+        "is_member": False,
+        "is_acting_manager": is_acting_manager,
     }
 
 
@@ -269,19 +302,26 @@ class MembershipStatusView(APIView):
 
     def get(self, request):
         user = request.user
-        current = get_active_membership(user)
-        current_id = current.id if current else None
-        memberships = (
+        current = get_current_access(user)
+        current_season_id = current.season_id if current else None
+        real_memberships = list(
             MessMemberShip.objects.select_related('mess', 'season')
             .filter(user=user)
             .order_by('-season__start_date', '-season_id', '-joined_at')
         )
+        by_season = {membership.season_id: membership for membership in real_memberships}
+        leader_seasons = MessSeason.objects.select_related('mess').filter(Q(mess__manager=user) | Q(mess__acting_manager=user))
+        seasons = {membership.season_id: membership.season for membership in real_memberships}
+        seasons.update({season.id: season for season in leader_seasons})
+        summaries = [access_summary(user, season, by_season.get(season.id), current_season_id) for season in seasons.values()]
+        summaries.sort(key=lambda item: (item['season_start_date'], item['season_id']), reverse=True)
+        current_summary = next((item for item in summaries if item['is_current']), None)
         join_requests = MessMemberShipRequest.objects.select_related('mess', 'season').filter(user=user).order_by('-requested_at')
         invites = MessMemberShipInvitation.objects.select_related('mess', 'season', 'invited_by').filter(user=user).order_by('-invited_at')
         return Response({
-            "current": membership_summary(current, current_id) if current else None,
-            "memberships": [membership_summary(m, current_id) for m in memberships],
-            "history": [membership_summary(m, current_id) for m in memberships if m.id != current_id],
+            "current": current_summary,
+            "memberships": summaries,
+            "history": [item for item in summaries if not item['is_current']],
             "pending_requests": [request_summary(r) for r in join_requests if r.current_status == 'pending'],
             "join_requests": [request_summary(r) for r in join_requests],
             "invites": [
@@ -463,23 +503,39 @@ class SwitchMembershipView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
-        try:
-            membership_id = int(request.data.get('membership_id'))
-        except (TypeError, ValueError):
-            raise ValidationError({"membership_id": "membership_id must be a number."})
-        membership = MessMemberShip.objects.select_related('mess', 'season').filter(pk=membership_id, user=request.user).first()
-        if not membership:
-            raise NotFound("Membership not found.")
+        membership_id = request.data.get('membership_id')
+        if membership_id not in (None, ''):
+            try:
+                membership_id = int(membership_id)
+            except (TypeError, ValueError):
+                raise ValidationError({"membership_id": "membership_id must be a number."})
+            membership = MessMemberShip.objects.select_related('mess', 'season').filter(pk=membership_id, user=request.user).first()
+            if not membership:
+                raise NotFound("Membership not found.")
+            season = membership.season
+        else:
+            try:
+                season_id = int(request.data.get('season_id'))
+                mess_id = int(request.data.get('mess_id'))
+            except (TypeError, ValueError):
+                raise ValidationError({"season_id": "season_id and mess_id must be numbers."})
+            season = MessSeason.objects.select_related('mess').filter(pk=season_id, mess_id=mess_id).first()
+            if not season:
+                raise NotFound("Season not found in this mess.")
+            membership = get_real_membership(request.user, season)
+            if not membership and season.mess.manager_id != request.user.id and season.mess.acting_manager_id != request.user.id:
+                raise PermissionDenied("You don't have access to this season.")
 
-        label = f"{membership.mess.name} ({membership.season.name})"
-        state = membership_state(membership)
-        if state == 'disabled':
+        label = f"{season.mess.name} ({season.name})"
+        state = membership_state(membership) if membership else None
+        is_leader = season.mess.manager_id == request.user.id or season.mess.acting_manager_id == request.user.id
+        if state == 'disabled' and not is_leader:
             raise ValidationError({"detail": f"Your membership in {label} was disabled by its manager."})
-        if membership.season.is_disabled:
+        if season.is_disabled:
             raise ValidationError({"detail": f"{label} is disabled by its manager, so it can't be your current season."})
 
-        set_current_membership(request.user, membership)
-        return Response({"message": f"Switched to {label}.", "current": membership_summary(membership, membership.id)})
+        set_current_context(request.user, season, membership)
+        return Response({"message": f"Switched to {label}.", "current": access_summary(request.user, season, membership, season.id)})
 
 
 # ---------------------------------------------------------------------------
@@ -721,7 +777,8 @@ class AdminActingManagerView(APIView):
             previous = mess.acting_manager
             mess.acting_manager = member.user
             mess.save(update_fields=['acting_manager', 'updated_at'])
-            MessMemberShip.objects.filter(user_id=member.user_id, mess_id=manager.mess_id).exclude(status='active', left_at__isnull=True).update(status='active', left_at=None, updated_at=timezone.now())
+        if previous is not None:
+            get_current_access(previous)
         message = f"{name} is now the acting manager."
         if previous is not None:
             message += f" {previous.full_name} is a regular member again."
@@ -737,6 +794,7 @@ class AdminActingManagerView(APIView):
                 raise ValidationError({"detail": f"{name} isn't the acting manager."})
             mess.acting_manager = None
             mess.save(update_fields=['acting_manager', 'updated_at'])
+        get_current_access(member.user)
         return Response({"message": f"{name} is no longer the acting manager."})
 
 
@@ -764,5 +822,5 @@ class AdminTransferOwnershipView(APIView):
             if mess.acting_manager_id == member.user_id:
                 mess.acting_manager = None
             mess.save(update_fields=['manager', 'acting_manager', 'updated_at'])
-            MessMemberShip.objects.filter(user_id=member.user_id, mess_id=manager.mess_id).exclude(status='active', left_at__isnull=True).update(status='active', left_at=None, updated_at=timezone.now())
+        get_current_access(request.user)
         return Response({"message": f"{name} is now the primary manager. You're a regular member now."})

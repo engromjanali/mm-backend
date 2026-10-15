@@ -2,7 +2,7 @@ from django.utils import timezone
 from rest_framework.test import APITestCase
 
 from AuthManagement.models import User
-from .models import Mess, MessMemberShip
+from .models import Mess, MessMemberShip, MessSeason
 
 
 class MemberManagementAPITests(APITestCase):
@@ -113,21 +113,16 @@ class MemberManagementAPITests(APITestCase):
         self.act('disable', self.alice_m)
         self.assertRejected(self.act('acting-manager', self.alice_m), "Alice isn't an active member. Enable them first.")
 
-    def test_assign_acting_manager_enables_member_in_every_season(self):
-        august = self.client.post('/api/v1/admin/seasons', {'name': 'August 2026'}, format='json').data['season']
-        self.alice_m.status = 'left'
-        self.alice_m.left_at = timezone.now()
-        self.alice_m.save()
-        self.client.post(f"/api/v1/admin/seasons/{august['id']}/switch")
-        alice_august = MessMemberShip.objects.get(user=self.alice, season_id=august['id'])
-
-        response = self.act('acting-manager', alice_august)
-
+    def test_acting_manager_can_access_a_season_without_membership(self):
+        historical = MessSeason.objects.create(mess=self.mess(), name='Historical', start_date=timezone.localdate())
+        response = self.act('acting-manager', self.alice_m)
         self.assertEqual(response.status_code, 200, response.data)
-        self.alice_m.refresh_from_db()
-        self.assertEqual((self.alice_m.status, self.alice_m.left_at), ('active', None))
         self.as_user(self.alice)
-        self.assertEqual(self.client.post('/api/v1/user/membership/switch', {'membership_id': self.alice_m.id}, format='json').status_code, 200)
+        switched = self.client.post('/api/v1/user/membership/switch', {'mess_id': self.mess().id, 'season_id': historical.id}, format='json')
+        self.assertEqual(switched.status_code, 200, switched.data)
+        self.assertIsNone(switched.data['current']['membership_id'])
+        self.assertEqual((switched.data['current']['is_manager'], switched.data['current']['is_member'], switched.data['current']['is_acting_manager']), (False, False, True))
+        self.assertFalse(MessMemberShip.objects.filter(user=self.alice, season=historical).exists())
 
     # -- transfer ownership --------------------------------------------------
 
@@ -143,21 +138,26 @@ class MemberManagementAPITests(APITestCase):
         self.as_user(self.alice)
         self.assertEqual(self.client.get('/api/v1/user/mess').data['my_role'], 'manager')
 
-    def test_transfer_ownership_enables_new_manager_in_every_season(self):
-        august = self.client.post('/api/v1/admin/seasons', {'name': 'August 2026'}, format='json').data['season']
-        self.alice_m.status = 'left'
-        self.alice_m.left_at = timezone.now()
-        self.alice_m.save()
-        self.client.post(f"/api/v1/admin/seasons/{august['id']}/switch")
-        alice_august = MessMemberShip.objects.get(user=self.alice, season_id=august['id'])
+    def test_transfer_ownership_uses_leader_access_and_releases_old_manager_context(self):
+        historical = MessSeason.objects.create(mess=self.mess(), name='Historical', start_date=timezone.localdate())
+        alice_historical = MessMemberShip.objects.create(user=self.alice, mess=self.mess(), season=historical)
+        missing = MessSeason.objects.create(mess=self.mess(), name='Missing', start_date=timezone.localdate())
+        self.client.post(f'/api/v1/admin/seasons/{historical.id}/switch')
+        self.manager.refresh_from_db()
+        self.assertIsNone(self.manager.current_membership_id)
 
-        response = self.act('transfer-ownership', alice_august)
-
+        response = self.act('transfer-ownership', alice_historical)
         self.assertEqual(response.status_code, 200, response.data)
-        self.alice_m.refresh_from_db()
-        self.assertEqual((self.alice_m.status, self.alice_m.left_at), ('active', None))
+        self.manager.refresh_from_db()
+        self.assertEqual((self.manager.current_season_id, self.manager.current_membership_id), (self.manager_m.season_id, self.manager_m.id))
+
         self.as_user(self.alice)
-        self.assertEqual(self.client.post('/api/v1/user/membership/switch', {'membership_id': self.alice_m.id}, format='json').status_code, 200)
+        status = self.client.get('/api/v1/user/membership/status').data
+        missing_access = next(item for item in status['memberships'] if item['season_id'] == missing.id)
+        self.assertEqual((missing_access['membership_id'], missing_access['is_manager'], missing_access['is_member'], missing_access['is_acting_manager']), (None, True, False, False))
+        switched = self.client.post('/api/v1/user/membership/switch', {'mess_id': self.mess().id, 'season_id': missing.id}, format='json')
+        self.assertEqual(switched.status_code, 200, switched.data)
+        self.assertFalse(MessMemberShip.objects.filter(user=self.alice, season=missing).exists())
 
     def test_transfer_guards(self):
         self.assertRejected(self.act('transfer-ownership', self.manager_m), "You're already the primary manager.")

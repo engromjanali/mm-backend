@@ -1,5 +1,6 @@
 from django.db import models
 from django.utils import timezone
+from AuthManagement.models import User
 from MessManagement.models import MessSeason, MessMemberShip
 
 
@@ -13,7 +14,7 @@ class Cost(models.Model):
     # The member who did the shopping (a manager is also a member).
     performed_by = models.ForeignKey(MessMemberShip, on_delete=models.CASCADE, related_name='costs_performed')
     # Manager / acting manager who entered or last edited the record.
-    recorded_by = models.ForeignKey(MessMemberShip, on_delete=models.SET_NULL, null=True, blank=True, related_name='costs_recorded')
+    recorded_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='costs_recorded')
     date = models.DateField(default=timezone.localdate)
     # Wall-clock shopping time (no time zone), optional.
     time = models.TimeField(null=True, blank=True)

@@ -1,17 +1,65 @@
 import secrets
 import string
+from dataclasses import dataclass
 from datetime import timedelta
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
 from django.conf import settings
 from django.db import transaction
-from django.db.models import Count, Q, Subquery, Sum
+from django.db.models import Count, Q, Sum
 from django.utils import timezone
 from rest_framework.exceptions import PermissionDenied
 
 from AuthManagement.models import User
 from .models import INVITE_AND_REQUEST_LIFETIME, Mess, MessMemberShip, MessMemberShipInvitation, MessMemberShipRequest, MessSeason
+
+
+@dataclass(frozen=True)
+class SeasonAccessContext:
+    user: User
+    season: MessSeason
+    membership: MessMemberShip | None
+
+    @property
+    def mess(self):
+        return self.season.mess
+
+    @property
+    def mess_id(self):
+        return self.season.mess_id
+
+    @property
+    def season_id(self):
+        return self.season.id
+
+    @property
+    def membership_id(self):
+        return self.membership.id if self.membership else None
+
+    @property
+    def is_manager(self):
+        return self.mess.manager_id == self.user.id
+
+    @property
+    def is_acting_manager(self):
+        return self.mess.acting_manager_id == self.user.id
+
+    @property
+    def is_member(self):
+        return self.membership is not None
+
+    @property
+    def role(self):
+        if self.is_manager:
+            return 'manager'
+        if self.is_acting_manager:
+            return 'acting_manager'
+        return 'member'
+
+    @property
+    def id(self):
+        return self.membership_id
 
 
 def get_verified_membership_and_season(request, require_write=False):
@@ -36,32 +84,26 @@ def get_verified_membership_and_season(request, require_write=False):
         request.META.get('HTTP_SESSION_ID')
     )
 
-    if not membership_id or not session_id:
-        raise PermissionDenied("Membership-ID and Session-ID headers are required.")
+    if not session_id:
+        raise PermissionDenied("Session-ID header is required.")
 
     try:
-        membership_id = int(membership_id)
+        membership_id = int(membership_id) if membership_id else None
         session_id = int(session_id)
     except (ValueError, TypeError):
         raise PermissionDenied("Membership-ID and Session-ID headers must be valid integers.")
 
-    # 2. Verify Membership for request.user
-    try:
-        membership = MessMemberShip.objects.get(id=membership_id, user=request.user, status__in=['active', 'left'])
-    except MessMemberShip.DoesNotExist:
-        raise PermissionDenied("Invalid or inactive membership for this user.")
-
-    # 3. Verify Season and associate with mess
-    try:
-        season = MessSeason.objects.get(id=session_id, mess=membership.mess)
-    except MessSeason.DoesNotExist:
-        raise PermissionDenied("Invalid session ID or session does not belong to your mess.")
-
-    # 4. Enforce Manager / Acting Manager role check for write operations
-    if require_write and membership.role not in ['manager', 'acting_manager']:
+    season = MessSeason.objects.select_related('mess').filter(id=session_id).first()
+    if not season:
+        raise PermissionDenied("Invalid session ID.")
+    membership = MessMemberShip.objects.filter(id=membership_id, user=request.user, season=season, status__in=['active', 'left']).first() if membership_id else None
+    context = SeasonAccessContext(request.user, season, membership)
+    if not membership and not context.is_manager and not context.is_acting_manager:
+        raise PermissionDenied("You don't have access to this season.")
+    if require_write and not context.is_manager and not context.is_acting_manager:
         raise PermissionDenied("Only Manager or Acting Manager can perform this write operation.")
 
-    return membership, season
+    return membership or context, season
 
 
 def usable_memberships(user):
@@ -78,23 +120,71 @@ def get_active_membership(user):
     while it's still usable; otherwise their newest usable membership, which
     is then saved as current so the choice stays stable.
     """
-    memberships = usable_memberships(user)
-    # Read the saved choice from the database, not the (possibly stale) user object.
-    saved = type(user).objects.filter(pk=user.pk).values('current_membership')[:1]
-    current = memberships.filter(pk=Subquery(saved)).first()
-    if current:
-        user.current_membership_id = current.id
-        return current
-    fallback = memberships.order_by('-season__start_date', '-season_id', '-joined_at').first()
-    set_current_membership(user, fallback)
-    return fallback
+    context = get_current_access(user)
+    return context.membership if context else None
+
+
+def get_current_access(user):
+    """The selected season and the real membership or mess-level leadership granting access."""
+    saved = type(user).objects.filter(pk=user.pk).values('current_season_id', 'current_membership_id').first() or {}
+    season_id = saved.get('current_season_id')
+    if saved.get('current_membership_id'):
+        membership_season_id = MessMemberShip.objects.filter(pk=saved['current_membership_id']).values_list('season_id', flat=True).first()
+        if membership_season_id != season_id:
+            season_id = membership_season_id
+    context = _season_access(user, season_id)
+    if context:
+        set_current_context(user, context.season, context.membership)
+        return context
+
+    membership = usable_memberships(user).order_by('-season__start_date', '-season_id', '-joined_at').first()
+    if membership:
+        set_current_context(user, membership.season, membership)
+        return SeasonAccessContext(user, membership.season, membership)
+
+    season = (
+        MessSeason.objects.select_related('mess')
+        .filter(Q(mess__manager=user) | Q(mess__acting_manager=user), is_disabled=False)
+        .order_by('-start_date', '-id').first()
+    )
+    if season:
+        set_current_context(user, season, None)
+        return SeasonAccessContext(user, season, None)
+
+    set_current_context(user, None, None)
+    return None
+
+
+def _season_access(user, season_id):
+    if not season_id:
+        return None
+    season = MessSeason.objects.select_related('mess').filter(pk=season_id, is_disabled=False).first()
+    if not season:
+        return None
+    membership = usable_memberships(user).filter(season=season).first()
+    if membership or season.mess.manager_id == user.id or season.mess.acting_manager_id == user.id:
+        return SeasonAccessContext(user, season, membership)
+    return None
+
+
+def set_current_context(user, season, membership=None):
+    """Saves the selected season and its real membership, which may be absent for a leader."""
+    season_id = season.id if season else None
+    membership_id = membership.id if membership else None
+    if user.current_season_id != season_id or user.current_membership_id != membership_id:
+        type(user).objects.filter(pk=user.pk).update(current_season_id=season_id, current_membership_id=membership_id)
+    user.current_season_id = season_id
+    user.current_membership_id = membership_id
+
+
+def get_real_membership(user, season):
+    """The user's usable real membership in [season], never a leadership-only context."""
+    return usable_memberships(user).filter(season=season).first()
 
 
 def set_current_membership(user, membership):
     """Saves [membership] (or None) as the user's current membership."""
-    membership_id = membership.id if membership else None
-    type(user).objects.filter(pk=user.pk).update(current_membership=membership_id)
-    user.current_membership_id = membership_id
+    set_current_context(user, membership.season if membership else None, membership)
 
 
 def expire_stale_invites_and_requests():
@@ -144,7 +234,7 @@ def start_season(mess, name, start_date, source, move_current=False):
         ])
         if move_current:
             for membership in created:
-                User.objects.filter(pk=membership.user_id, current_membership__season=source).update(current_membership=membership)
+                User.objects.filter(pk=membership.user_id, current_membership__season=source).update(current_membership=membership, current_season=season)
     return season, len(created)
 
 

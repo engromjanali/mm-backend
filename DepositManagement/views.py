@@ -19,7 +19,7 @@ from rest_framework.views import APIView
 from MealManagement.utils import DATE_INPUT_FORMATS, parse_date_value, validate_date_in_season
 from MessManagement.membership_views import get_managed_membership
 from MessManagement.models import MessMemberShip
-from MessManagement.utils import get_active_membership, signed_amount_summary
+from MessManagement.utils import get_current_access, signed_amount_summary
 from .models import Deposit
 
 ZERO = Decimal('0')
@@ -35,13 +35,13 @@ def deposit_json(deposit):
         "date": deposit.date.isoformat(),
         "note": deposit.description or "",
         "payment_method": deposit.payment_method,
-        "recorded_by": deposit.recorded_by.user.full_name if deposit.recorded_by else None,
+        "recorded_by": deposit.recorded_by.full_name if deposit.recorded_by else None,
         "created_at": deposit.created_at,
     }
 
 
 def season_deposits(season):
-    return Deposit.objects.select_related('performed_by__user', 'recorded_by__user').filter(season=season)
+    return Deposit.objects.select_related('performed_by__user', 'recorded_by').filter(season=season)
 
 
 class DepositWriteSerializer(serializers.Serializer):
@@ -70,11 +70,11 @@ class MyDepositListView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        membership = get_active_membership(request.user)
-        if not membership:
+        context = get_current_access(request.user)
+        if not context:
             raise ValidationError({"detail": "You are not connected to an active mess."})
-        deposits = season_deposits(membership.season).filter(performed_by=membership)
-        return Response({"data": [deposit_json(d) for d in deposits], "summary": signed_amount_summary(deposits)})
+        deposits = season_deposits(context.season).filter(performed_by_id=context.membership_id) if context.membership_id else season_deposits(context.season).none()
+        return Response({"is_member": context.is_member, "data": [deposit_json(d) for d in deposits], "summary": signed_amount_summary(deposits)})
 
 
 # ---------------------------------------------------------------------------
@@ -129,7 +129,7 @@ class AdminDepositListCreateView(APIView):
         deposit = Deposit.objects.create(
             season=manager.season,
             performed_by=member,
-            recorded_by=manager,
+            recorded_by=request.user,
             amount=data['amount'],
             date=data.get('date') or Deposit._meta.get_field('date').get_default(),
             description=data.get('note') or '',
@@ -167,7 +167,7 @@ class AdminDepositDetailView(APIView):
             deposit.description = data['note'] or ''
         if 'payment_method' in data:
             deposit.payment_method = data['payment_method']
-        deposit.recorded_by = manager
+        deposit.recorded_by = request.user
         deposit.save()
         return Response(deposit_json(deposit))
 
@@ -212,5 +212,5 @@ class AdminDepositSummaryView(APIView):
             "season": {"id": manager.season_id, "name": manager.season.name},
             "summary": {**signed_amount_summary(deposits), "members": len(balances), "active_members": sum(1 for b in balances if b['entries'])},
             "member_balances": balances,
-            "mine": signed_amount_summary(deposits.filter(performed_by=manager)),
+            "mine": signed_amount_summary(deposits.filter(performed_by_id=manager.membership_id)) if manager.membership_id else signed_amount_summary(deposits.none()),
         })

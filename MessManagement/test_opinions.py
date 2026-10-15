@@ -50,6 +50,17 @@ class OpinionAPITests(APITestCase):
         data = self.messages().data['data'][0]
         self.assertEqual(set(data), {'id', 'period_id', 'message', 'created_at', 'is_published'})
 
+    def test_manager_without_season_membership_cannot_submit_as_a_member(self):
+        period = OpinionPeriod.objects.create(season=self.old_season, title='Old feedback', details='Historical', start_date=self.today - timedelta(days=30), end_date=self.today + timedelta(days=1))
+        self.client.force_authenticate(user=self.manager)
+        switched = self.client.post('/api/v1/user/membership/switch', {'mess_id': self.mess.id, 'season_id': self.old_season.id}, format='json')
+        self.assertEqual(switched.status_code, 200, switched.data)
+
+        response = self.submit(period=period)
+
+        self.assertEqual(response.status_code, 403, response.data)
+        self.assertEqual(AnonymousOpinion.objects.count(), 0)
+
     def test_old_disabled_left_and_other_mess_members_cannot_submit(self):
         for user in (self.old_member, self.outsider):
             self.client.force_authenticate(user=user)

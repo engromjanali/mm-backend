@@ -1,5 +1,6 @@
 from django.db import models
 from django.utils import timezone
+from AuthManagement.models import User
 from MessManagement.models import MessSeason, MessMemberShip
 # Create your models here.
 
@@ -13,7 +14,7 @@ class Deposit(models.Model):
     # The member the deposit belongs to (a manager is also a member).
     performed_by = models.ForeignKey(MessMemberShip, on_delete=models.CASCADE, related_name='deposits_performed')
     # Manager / acting manager who entered the record.
-    recorded_by = models.ForeignKey(MessMemberShip, on_delete=models.SET_NULL, null=True, blank=True, related_name='deposits_recorded')
+    recorded_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='deposits_recorded')
     date = models.DateField(default=timezone.localdate)
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     payment_method = models.CharField(max_length=20, choices=[('cash', 'Cash'), ('bank_transfer', 'Bank Transfer'), ('mobile_payment', 'Mobile Payment')], default='cash')
