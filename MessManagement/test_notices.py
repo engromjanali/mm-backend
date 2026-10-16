@@ -45,23 +45,21 @@ class NoticeAPITests(APITestCase):
         self.client.force_authenticate(user=None)
         self.assertIn(self.client.get('/api/v1/user/notices').status_code, (401, 403))
 
-    def test_new_season_starts_with_an_empty_board(self):
+    def test_notices_remain_available_after_switching_season(self):
         old_id = self.publish('Old season', pinned=True).data['id']
         august = self.client.post('/api/v1/admin/seasons', {'name': 'August 2026'}, format='json').data['season']
         self.client.post(f"/api/v1/admin/seasons/{august['id']}/switch")
 
-        self.assertEqual(self.client.get('/api/v1/user/notices').data['data'], [])
-        self.assertRejected(self.pin(old_id, False), 'Notice not found in the current season', 404)
-        self.assertRejected(self.client.delete(f'/api/v1/admin/notices/{old_id}'), 'Notice not found in the current season', 404)
+        self.assertEqual([n['id'] for n in self.client.get('/api/v1/user/notices').data['data']], [old_id])
+        self.assertEqual(self.pin(old_id, False).status_code, 200)
 
-        # The new season has its own pinned slot; the old notice stays in its season.
         new_id = self.publish('New season', pinned=True).data['id']
         self.client.force_authenticate(user=self.alice)
         alice_august = MessMemberShip.objects.get(user=self.alice, season_id=august['id'])
         self.client.post('/api/v1/user/membership/switch', {'membership_id': alice_august.id}, format='json')
-        self.assertEqual([n['id'] for n in self.client.get('/api/v1/user/notices').data['data']], [new_id])
-        self.assertTrue(Notices.objects.get(id=old_id).is_pinned)
-        self.assertEqual(Notices.objects.get(id=new_id).season.name, 'August 2026')
+        self.assertEqual([n['id'] for n in self.client.get('/api/v1/user/notices').data['data']], [new_id, old_id])
+        self.assertFalse(Notices.objects.get(id=old_id).is_pinned)
+        self.assertEqual(Notices.objects.get(id=new_id).mess.name, 'Green House')
 
     def test_notices_of_another_mess_are_hidden(self):
         bob = User.objects.create_user(email='bob@test.com', phone='01733333333', full_name='Bob', password='pass12345')
@@ -71,9 +69,9 @@ class NoticeAPITests(APITestCase):
 
         self.client.force_authenticate(user=self.manager)
         self.assertEqual(self.client.get('/api/v1/user/notices').data['data'], [])
-        self.assertRejected(self.client.patch(f'/api/v1/admin/notices/{other_id}', {'title': 'x'}, format='json'), 'Notice not found in the current season', 404)
-        self.assertRejected(self.pin(other_id), 'Notice not found in the current season', 404)
-        self.assertRejected(self.client.delete(f'/api/v1/admin/notices/{other_id}'), 'Notice not found in the current season', 404)
+        self.assertRejected(self.client.patch(f'/api/v1/admin/notices/{other_id}', {'title': 'x'}, format='json'), 'Notice not found in this mess', 404)
+        self.assertRejected(self.pin(other_id), 'Notice not found in this mess', 404)
+        self.assertRejected(self.client.delete(f'/api/v1/admin/notices/{other_id}'), 'Notice not found in this mess', 404)
 
     # -- write access --------------------------------------------------------
 
@@ -115,7 +113,7 @@ class NoticeAPITests(APITestCase):
         self.assertRejected(patch({}), 'Send a title or description to update.')
         self.assertRejected(patch({'title': ''}), "Title can't be empty.")
         self.assertRejected(patch({'description': 'x' * 2001}), "Description can't be longer than 2000 characters.")
-        self.assertRejected(self.client.patch('/api/v1/admin/notices/999999', {'title': 'x'}, format='json'), 'Notice not found in the current season', 404)
+        self.assertRejected(self.client.patch('/api/v1/admin/notices/999999', {'title': 'x'}, format='json'), 'Notice not found in this mess', 404)
 
     # -- pin -----------------------------------------------------------------
 
@@ -138,11 +136,11 @@ class NoticeAPITests(APITestCase):
         notice_id = self.publish().data['id']
         self.assertRejected(self.client.post(f'/api/v1/admin/notices/{notice_id}/pin', {}, format='json'), 'pinned is required')
         self.assertRejected(self.pin(notice_id, 'yes please'), 'pinned must be true or false.')
-        self.assertRejected(self.pin(999999), 'Notice not found in the current season', 404)
+        self.assertRejected(self.pin(999999), 'Notice not found in this mess', 404)
 
     # -- delete --------------------------------------------------------------
 
     def test_delete(self):
         notice_id = self.publish().data['id']
         self.assertEqual(self.client.delete(f'/api/v1/admin/notices/{notice_id}').status_code, 200)
-        self.assertRejected(self.client.delete(f'/api/v1/admin/notices/{notice_id}'), 'Notice not found in the current season', 404)
+        self.assertRejected(self.client.delete(f'/api/v1/admin/notices/{notice_id}'), 'Notice not found in this mess', 404)

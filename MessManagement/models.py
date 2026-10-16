@@ -160,10 +160,9 @@ class MessMemberShipInvitation(ExpiringMixin, models.Model):
 
 class Notices(models.Model):
     """
-    A notice on a season's board. Like deposits and costs it belongs to a
-    season, so a new season starts with an empty board.
+    A notice on a mess's board, shared by every season of that mess.
     """
-    season = models.ForeignKey(MessSeason, on_delete=models.CASCADE, related_name='notices')
+    mess = models.ForeignKey(Mess, on_delete=models.CASCADE, related_name='notices')
     title = models.CharField(max_length=200)
     content = models.TextField()
     is_pinned = models.BooleanField(default=False)
@@ -175,8 +174,8 @@ class Notices(models.Model):
         # Pinned notice first, then newest.
         ordering = ['-is_pinned', '-created_at', '-id']
         constraints = [
-            # At most one pinned notice per season.
-            models.UniqueConstraint(fields=['season'], condition=models.Q(is_pinned=True), name='one_pinned_notice_per_season'),
+            # At most one pinned notice per mess.
+            models.UniqueConstraint(fields=['mess'], condition=models.Q(is_pinned=True), name='one_pinned_notice_per_mess'),
         ]
 
 

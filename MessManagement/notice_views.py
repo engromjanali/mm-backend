@@ -1,10 +1,10 @@
 """
-Notice board APIs, scoped to the caller's active season.
+Notice board APIs, scoped to the caller's active mess.
 
-Like deposits and costs, notices belong to a season: a new season starts with
-an empty board. Every member (the manager included) reads the notices; the
+Notices belong to a mess and remain visible across all of its seasons. Every
+member (the manager included) reads the notices; the
 manager / acting manager publishes, edits, deletes and pins them. At most one
-notice per season is pinned — pinning one unpins the others, and a database
+notice per mess is pinned — pinning one unpins the others, and a database
 constraint backs that up.
 
 User endpoints live under ``/api/v1/user/`` and manager endpoints under
@@ -29,7 +29,7 @@ DESCRIPTION_MAX_LENGTH = 2000
 # ---------------------------------------------------------------------------
 
 class NoticeConflict(APIException):
-    """409 — another pin won a race for the season's single pinned slot."""
+    """409 — another pin won a race for the mess's single pinned slot."""
     status_code = status.HTTP_409_CONFLICT
     default_detail = "Another notice was pinned at the same time. Refresh and try again."
     default_code = 'conflict'
@@ -75,13 +75,13 @@ class NoticePinSerializer(serializers.Serializer):
 
 def _pin(notice, pinned):
     """
-    Pins (unpinning every other notice of the season) or unpins [notice] in one
+    Pins (unpinning every other notice of the mess) or unpins [notice] in one
     transaction. A concurrent pin that wins the race surfaces as a readable 409.
     """
     try:
         with transaction.atomic():
             if pinned:
-                Notices.objects.filter(season_id=notice.season_id, is_pinned=True).exclude(pk=notice.pk).update(is_pinned=False)
+                Notices.objects.filter(mess_id=notice.mess_id, is_pinned=True).exclude(pk=notice.pk).update(is_pinned=False)
             notice.is_pinned = pinned
             notice.save(update_fields=['is_pinned', 'updated_at'])
     except IntegrityError:
@@ -89,11 +89,11 @@ def _pin(notice, pinned):
 
 
 def _managed_notice(request, pk):
-    """The notice [pk] of the caller's active season; the caller must manage the mess."""
+    """The notice [pk] of the caller's mess; the caller must manage the mess."""
     manager = get_managed_membership(request.user)
-    notice = Notices.objects.filter(pk=pk, season=manager.season).first()
+    notice = Notices.objects.filter(pk=pk, mess=manager.mess).first()
     if not notice:
-        raise NotFound("Notice not found in the current season. It may have been deleted.")
+        raise NotFound("Notice not found in this mess. It may have been deleted.")
     return notice
 
 
@@ -105,7 +105,7 @@ class NoticeListView(APIView):
     """
     GET /api/v1/user/notices
 
-    Every notice of the caller's active season, pinned first, then newest.
+    Every notice of the caller's active mess, pinned first, then newest.
     """
     permission_classes = [permissions.IsAuthenticated]
 
@@ -113,7 +113,7 @@ class NoticeListView(APIView):
         context = get_current_access(request.user)
         if not context:
             raise ValidationError({"detail": "You are not connected to an active mess."})
-        notices = Notices.objects.filter(season=context.season)
+        notices = Notices.objects.filter(mess=context.mess)
         return Response({"data": [notice_json(n) for n in notices]})
 
 
@@ -133,7 +133,7 @@ class AdminNoticeCreateView(APIView):
 
         # Publish and pin together, so a failed pin doesn't leave a half-done notice.
         with transaction.atomic():
-            notice = Notices.objects.create(season=manager.season, title=data['title'], content=data['description'])
+            notice = Notices.objects.create(mess=manager.mess, title=data['title'], content=data['description'])
             if data.get('pinned'):
                 _pin(notice, True)
         return Response(notice_json(notice), status=status.HTTP_201_CREATED)
@@ -171,7 +171,7 @@ class AdminNoticePinView(APIView):
     """
     POST /api/v1/admin/notices/<id>/pin  {pinned: true|false}
 
-    Pinning unpins any other notice of the season.
+    Pinning unpins any other notice of the mess.
     """
     permission_classes = [permissions.IsAuthenticated]
 
