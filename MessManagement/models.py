@@ -1,6 +1,7 @@
 import secrets
 from datetime import timedelta
 
+from django.conf import settings
 from django.core.validators import MaxValueValidator
 from django.db import models
 from django.utils import timezone
@@ -187,6 +188,7 @@ class OpinionPeriod(models.Model):
     end_date = models.DateField()
     accepting_messages = models.BooleanField(default=True)
     allow_named_opinions = models.BooleanField(default=False)
+    submission_mode = models.CharField(max_length=20, choices=[('anonymous_only', 'Name hidden'), ('named_only', 'Name revealed'), ('all', 'All')], default='anonymous_only')
     visibility = models.CharField(max_length=20, choices=[('realtime', 'Realtime'), ('after_publish', 'After publish')], default='after_publish')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -198,11 +200,12 @@ class OpinionPeriod(models.Model):
 
 
 class AnonymousOpinion(models.Model):
-    # Anonymous submissions keep this empty; named submissions store only the
-    # display name snapshot, never a user or membership relation.
+    # Anonymous submissions keep author and the public profile snapshot empty.
     period = models.ForeignKey(OpinionPeriod, on_delete=models.CASCADE, related_name='opinions')
     message = models.TextField()
-    author_name = models.CharField(max_length=150, blank=True, default='')
+    author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='named_opinions')
+    author_name = models.CharField(max_length=150, null=True, blank=True, default=None)
+    author_photo_url = models.URLField(max_length=500, null=True, blank=True, default=None)
     is_published = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 

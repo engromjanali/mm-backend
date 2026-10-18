@@ -26,6 +26,7 @@ class OpinionPeriodSerializer(serializers.Serializer):
     end_date = serializers.DateField()
     accepting_messages = serializers.BooleanField(required=False)
     allow_named_opinions = serializers.BooleanField(required=False)
+    submission_mode = serializers.ChoiceField(choices=['anonymous_only', 'named_only', 'all'], required=False)
     visibility = serializers.ChoiceField(choices=['realtime', 'after_publish'], required=False)
 
 
@@ -69,24 +70,27 @@ def _managed_mess(user, mess_id=None):
 
 
 def _messages(period, can_manage):
-    messages = AnonymousOpinion.objects.filter(period=period)
+    messages = AnonymousOpinion.objects.filter(period=period).select_related('author')
     if not can_manage and period.visibility != 'realtime':
         messages = messages.none()
     return messages
 
 
-def _message_json(opinion):
-    return {'id': opinion.id, 'period_id': opinion.period_id, 'message': opinion.message, 'author_name': opinion.author_name or None, 'is_anonymous': not bool(opinion.author_name), 'created_at': opinion.created_at, 'is_published': opinion.is_published}
+def _message_json(opinion, request):
+    is_anonymous = not bool(opinion.author_name)
+    author_name = opinion.author.full_name if not is_anonymous and opinion.author_id else opinion.author_name or None
+    author_photo_url = request.build_absolute_uri(opinion.author.photo.url) if not is_anonymous and opinion.author_id and opinion.author.photo else opinion.author_photo_url or None
+    return {'id': opinion.id, 'period_id': opinion.period_id, 'message': opinion.message, 'author_name': author_name, 'author_photo_url': author_photo_url, 'is_anonymous': is_anonymous, 'created_at': opinion.created_at, 'is_published': opinion.is_published}
 
 
-def _period_json(period, writable_season_id):
+def _period_json(period, writable_season_id, request):
     today = timezone.localdate()
     can_write = period.season_id == writable_season_id and period.accepting_messages and period.start_date <= today <= period.end_date
     return {
         'id': period.id, 'mess_id': period.season.mess_id, 'season_id': period.season_id, 'season_name': period.season.name,
         'title': period.title, 'details': period.details, 'start_date': period.start_date, 'end_date': period.end_date,
-        'accepting_messages': period.accepting_messages, 'allow_named_opinions': period.allow_named_opinions, 'visibility': period.visibility, 'can_write': can_write,
-        'opinions': [_message_json(opinion) for opinion in period.visible_opinions],
+        'accepting_messages': period.accepting_messages, 'allow_named_opinions': period.submission_mode in ('named_only', 'all') or period.allow_named_opinions, 'submission_mode': 'all' if period.allow_named_opinions and period.submission_mode == 'anonymous_only' else period.submission_mode, 'visibility': period.visibility, 'can_write': can_write,
+        'opinions': [_message_json(opinion, request) for opinion in period.visible_opinions],
         'opinion_count': period.visible_count, 'has_more_opinions': period.visible_count > len(period.visible_opinions),
     }
 
@@ -101,7 +105,7 @@ class OpinionPeriodListView(APIView):
         current_season = context.season if context and context.mess_id == mess.id else None
         writable_season_id = context.season_id if context and context.mess_id == mess.id and context.membership and context.membership.status == 'active' and context.membership.left_at is None else None
         visible = Q() if can_manage else Q(visibility='realtime')
-        messages = AnonymousOpinion.objects.all()
+        messages = AnonymousOpinion.objects.select_related('author')
         if not can_manage:
             messages = messages.filter(period__visibility='realtime')
         periods = OpinionPeriod.objects.filter(season__mess=mess).select_related('season').annotate(visible_count=Count('opinions', filter=visible)).prefetch_related(
@@ -113,7 +117,7 @@ class OpinionPeriodListView(APIView):
             'mess_id': mess.id, 'can_manage': can_manage, 'can_create': can_manage and current_season is not None,
             'current_season_id': current_season.id if current_season else None,
             'next_page': pagination.page.next_page_number() if pagination.page.has_next() else None,
-            'data': [_period_json(period, writable_season_id) for period in page],
+            'data': [_period_json(period, writable_season_id, request) for period in page],
         })
 
 
@@ -127,7 +131,7 @@ class OpinionMessagesView(APIView):
             raise NotFound('Opinion period not found in this mess.')
         pagination = OpinionMessagePagination()
         page = pagination.paginate_queryset(_messages(period, _can_manage(request.user, mess)), request)
-        return Response({'data': [_message_json(opinion) for opinion in page], 'next_page': pagination.page.next_page_number() if pagination.page.has_next() else None})
+        return Response({'data': [_message_json(opinion, request) for opinion in page], 'next_page': pagination.page.next_page_number() if pagination.page.has_next() else None})
 
     def post(self, request, pk):
         serializer = OpinionMessageSerializer(data=request.data)
@@ -146,9 +150,13 @@ class OpinionMessagesView(APIView):
             if not period.accepting_messages or not period.start_date <= today <= period.end_date:
                 raise ValidationError({'detail': 'This opinion period is not accepting messages.'})
             anonymous = serializer.validated_data['anonymous']
-            if not anonymous and not period.allow_named_opinions:
+            submission_mode = 'all' if period.allow_named_opinions and period.submission_mode == 'anonymous_only' else period.submission_mode
+            if not anonymous and submission_mode == 'anonymous_only':
                 raise ValidationError({'anonymous': 'Named opinions are not enabled for this period.'})
-            AnonymousOpinion.objects.create(period=period, message=serializer.validated_data['message'], author_name='' if anonymous else membership.user.full_name)
+            if anonymous and submission_mode == 'named_only':
+                raise ValidationError({'anonymous': 'Anonymous opinions are not enabled for this period.'})
+            photo_url = request.build_absolute_uri(membership.user.photo.url) if not anonymous and membership.user.photo else None
+            AnonymousOpinion.objects.create(period=period, message=serializer.validated_data['message'], author=None if anonymous else membership.user, author_name=None if anonymous else membership.user.full_name, author_photo_url=photo_url)
         return Response({'message': 'Opinion submitted.'}, status=status.HTTP_201_CREATED)
 
 
@@ -160,6 +168,8 @@ class AdminOpinionPeriodCreateView(APIView):
         serializer = OpinionPeriodSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
+        if 'submission_mode' in data:
+            data['allow_named_opinions'] = data['submission_mode'] in ('named_only', 'all')
         if data['end_date'] < data['start_date']:
             raise ValidationError({'end_date': 'End date cannot be before start date.'})
         context = get_current_access(request.user)
@@ -184,6 +194,10 @@ class AdminOpinionPeriodDetailView(APIView):
             serializer = OpinionPeriodSerializer(data=request.data, partial=True)
             serializer.is_valid(raise_exception=True)
             data = serializer.validated_data
+            if 'submission_mode' in data:
+                data['allow_named_opinions'] = data['submission_mode'] in ('named_only', 'all')
+            elif 'allow_named_opinions' in data:
+                data['submission_mode'] = 'all' if data['allow_named_opinions'] else 'anonymous_only'
             if data.get('end_date', period.end_date) < data.get('start_date', period.start_date):
                 raise ValidationError({'end_date': 'End date cannot be before start date.'})
             for field, value in data.items():

@@ -44,21 +44,27 @@ class OpinionAPITests(APITestCase):
         self.assertEqual(self.submit('  Honest feedback  ').status_code, 201)
         opinion = AnonymousOpinion.objects.get()
         self.assertEqual(opinion.message, 'Honest feedback')
-        self.assertEqual(opinion.author_name, '')
+        self.assertIsNone(opinion.author)
+        self.assertIsNone(opinion.author_name)
+        self.assertIsNone(opinion.author_photo_url)
         self.assertEqual(self.messages().data['data'], [])
         self.client.force_authenticate(user=self.manager)
         data = self.messages().data['data'][0]
-        self.assertEqual((data['author_name'], data['is_anonymous']), (None, True))
+        self.assertEqual((data['author_name'], data['author_photo_url'], data['is_anonymous']), (None, None, True))
 
     def test_current_members_can_submit_with_their_name(self):
         self.period.allow_named_opinions = True
         self.period.save(update_fields=['allow_named_opinions'])
+        self.member.photo.name = 'profile_photos/member.png'
+        self.member.save(update_fields=['photo'])
         self.assertEqual(self.submit('Named feedback', anonymous=False).status_code, 201)
         opinion = AnonymousOpinion.objects.get()
+        self.assertEqual(opinion.author, self.member)
         self.assertEqual(opinion.author_name, self.member.full_name)
+        self.assertTrue(opinion.author_photo_url.startswith('http'))
         self.client.force_authenticate(user=self.manager)
         data = self.messages().data['data'][0]
-        self.assertEqual((data['author_name'], data['is_anonymous']), (self.member.full_name, False))
+        self.assertEqual((data['author_name'], data['author_photo_url'], data['is_anonymous']), (self.member.full_name, opinion.author_photo_url, False))
 
     def test_named_submission_requires_manager_permission(self):
         self.assertEqual(self.submit('Named feedback', anonymous=False).status_code, 400)
@@ -68,6 +74,16 @@ class OpinionAPITests(APITestCase):
         self.assertEqual(response.status_code, 200, response.data)
         self.client.force_authenticate(user=self.member)
         self.assertEqual(self.submit('Named feedback', anonymous=False).status_code, 201)
+
+    def test_named_only_period_rejects_anonymous_submission(self):
+        self.period.submission_mode = 'named_only'
+        self.period.save(update_fields=['submission_mode'])
+
+        self.assertEqual(self.submit('Hidden feedback', anonymous=True).status_code, 400)
+        self.assertEqual(self.submit('Named feedback', anonymous=False).status_code, 201)
+        opinion = AnonymousOpinion.objects.get()
+        self.assertEqual(opinion.author, self.member)
+        self.assertEqual(opinion.author_name, self.member.full_name)
 
     def test_manager_without_season_membership_cannot_submit_as_a_member(self):
         period = OpinionPeriod.objects.create(season=self.old_season, title='Old feedback', details='Historical', start_date=self.today - timedelta(days=30), end_date=self.today + timedelta(days=1))
