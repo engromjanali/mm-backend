@@ -31,8 +31,8 @@ class OpinionAPITests(APITestCase):
     def messages(self, period=None, **kwargs):
         return self.client.get(f'/api/v1/user/opinions/{(period or self.period).id}/messages', {'mess_id': self.mess.id, **kwargs})
 
-    def submit(self, message='Feedback', period=None):
-        return self.client.post(f'/api/v1/user/opinions/{(period or self.period).id}/messages', {'message': message}, format='json')
+    def submit(self, message='Feedback', period=None, anonymous=True):
+        return self.client.post(f'/api/v1/user/opinions/{(period or self.period).id}/messages', {'message': message, 'anonymous': anonymous}, format='json')
 
     def publish(self):
         return self.client.post(f'/api/v1/admin/opinions/{self.period.id}/publish')
@@ -44,11 +44,30 @@ class OpinionAPITests(APITestCase):
         self.assertEqual(self.submit('  Honest feedback  ').status_code, 201)
         opinion = AnonymousOpinion.objects.get()
         self.assertEqual(opinion.message, 'Honest feedback')
-        self.assertEqual({field.name for field in AnonymousOpinion._meta.fields}, {'id', 'period', 'message', 'is_published', 'created_at'})
+        self.assertEqual(opinion.author_name, '')
         self.assertEqual(self.messages().data['data'], [])
         self.client.force_authenticate(user=self.manager)
         data = self.messages().data['data'][0]
-        self.assertEqual(set(data), {'id', 'period_id', 'message', 'created_at', 'is_published'})
+        self.assertEqual((data['author_name'], data['is_anonymous']), (None, True))
+
+    def test_current_members_can_submit_with_their_name(self):
+        self.period.allow_named_opinions = True
+        self.period.save(update_fields=['allow_named_opinions'])
+        self.assertEqual(self.submit('Named feedback', anonymous=False).status_code, 201)
+        opinion = AnonymousOpinion.objects.get()
+        self.assertEqual(opinion.author_name, self.member.full_name)
+        self.client.force_authenticate(user=self.manager)
+        data = self.messages().data['data'][0]
+        self.assertEqual((data['author_name'], data['is_anonymous']), (self.member.full_name, False))
+
+    def test_named_submission_requires_manager_permission(self):
+        self.assertEqual(self.submit('Named feedback', anonymous=False).status_code, 400)
+        self.assertEqual(AnonymousOpinion.objects.count(), 0)
+        self.client.force_authenticate(user=self.manager)
+        response = self.client.patch(f'/api/v1/admin/opinions/{self.period.id}', {'allow_named_opinions': True}, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.client.force_authenticate(user=self.member)
+        self.assertEqual(self.submit('Named feedback', anonymous=False).status_code, 201)
 
     def test_manager_without_season_membership_cannot_submit_as_a_member(self):
         period = OpinionPeriod.objects.create(season=self.old_season, title='Old feedback', details='Historical', start_date=self.today - timedelta(days=30), end_date=self.today + timedelta(days=1))

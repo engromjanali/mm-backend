@@ -186,6 +186,7 @@ class OpinionPeriod(models.Model):
     start_date = models.DateField()
     end_date = models.DateField()
     accepting_messages = models.BooleanField(default=True)
+    allow_named_opinions = models.BooleanField(default=False)
     visibility = models.CharField(max_length=20, choices=[('realtime', 'Realtime'), ('after_publish', 'After publish')], default='after_publish')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -197,9 +198,11 @@ class OpinionPeriod(models.Model):
 
 
 class AnonymousOpinion(models.Model):
-    # Membership is checked before insertion; no author or membership is stored.
+    # Anonymous submissions keep this empty; named submissions store only the
+    # display name snapshot, never a user or membership relation.
     period = models.ForeignKey(OpinionPeriod, on_delete=models.CASCADE, related_name='opinions')
     message = models.TextField()
+    author_name = models.CharField(max_length=150, blank=True, default='')
     is_published = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 

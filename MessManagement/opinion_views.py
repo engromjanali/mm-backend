@@ -25,11 +25,13 @@ class OpinionPeriodSerializer(serializers.Serializer):
     start_date = serializers.DateField()
     end_date = serializers.DateField()
     accepting_messages = serializers.BooleanField(required=False)
+    allow_named_opinions = serializers.BooleanField(required=False)
     visibility = serializers.ChoiceField(choices=['realtime', 'after_publish'], required=False)
 
 
 class OpinionMessageSerializer(serializers.Serializer):
     message = serializers.CharField(max_length=2000)
+    anonymous = serializers.BooleanField(required=False, default=True)
 
 
 def _read_mess(request):
@@ -74,7 +76,7 @@ def _messages(period, can_manage):
 
 
 def _message_json(opinion):
-    return {'id': opinion.id, 'period_id': opinion.period_id, 'message': opinion.message, 'created_at': opinion.created_at, 'is_published': opinion.is_published}
+    return {'id': opinion.id, 'period_id': opinion.period_id, 'message': opinion.message, 'author_name': opinion.author_name or None, 'is_anonymous': not bool(opinion.author_name), 'created_at': opinion.created_at, 'is_published': opinion.is_published}
 
 
 def _period_json(period, writable_season_id):
@@ -83,7 +85,7 @@ def _period_json(period, writable_season_id):
     return {
         'id': period.id, 'mess_id': period.season.mess_id, 'season_id': period.season_id, 'season_name': period.season.name,
         'title': period.title, 'details': period.details, 'start_date': period.start_date, 'end_date': period.end_date,
-        'accepting_messages': period.accepting_messages, 'visibility': period.visibility, 'can_write': can_write,
+        'accepting_messages': period.accepting_messages, 'allow_named_opinions': period.allow_named_opinions, 'visibility': period.visibility, 'can_write': can_write,
         'opinions': [_message_json(opinion) for opinion in period.visible_opinions],
         'opinion_count': period.visible_count, 'has_more_opinions': period.visible_count > len(period.visible_opinions),
     }
@@ -143,8 +145,11 @@ class OpinionMessagesView(APIView):
             today = timezone.localdate()
             if not period.accepting_messages or not period.start_date <= today <= period.end_date:
                 raise ValidationError({'detail': 'This opinion period is not accepting messages.'})
-            AnonymousOpinion.objects.create(period=period, message=serializer.validated_data['message'])
-        return Response({'message': 'Opinion submitted anonymously.'}, status=status.HTTP_201_CREATED)
+            anonymous = serializer.validated_data['anonymous']
+            if not anonymous and not period.allow_named_opinions:
+                raise ValidationError({'anonymous': 'Named opinions are not enabled for this period.'})
+            AnonymousOpinion.objects.create(period=period, message=serializer.validated_data['message'], author_name='' if anonymous else membership.user.full_name)
+        return Response({'message': 'Opinion submitted.'}, status=status.HTTP_201_CREATED)
 
 
 class AdminOpinionPeriodCreateView(APIView):
