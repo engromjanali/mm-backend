@@ -231,7 +231,7 @@ def season_ref(season):
 
 
 def user_summary(user):
-    return {"id": str(user.id), "name": user.full_name, "email": user.email, "phone": user.phone}
+    return {"id": str(user.id), "name": user.full_name, "photo": user.photo.url if user.photo else None, "email": user.email, "phone": user.phone}
 
 
 def find_user(query):
@@ -582,6 +582,7 @@ class AdminInviteView(APIView):
             "status": invite.current_status,
             "user_id": str(invite.user_id),
             "user_name": invite.user.full_name,
+            "user_photo": invite.user.photo.url if invite.user.photo else None,
             "user_email": invite.user.email,
             **season_ref(invite.season),
             "created_at": invite.invited_at,

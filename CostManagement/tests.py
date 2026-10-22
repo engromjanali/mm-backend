@@ -105,3 +105,11 @@ class CostAPITests(APITestCase):
         response = self.client.get('/api/v1/user/costs')
         self.assertEqual(response.status_code, 403)
         self.assertEqual(str(response.data['detail']), 'You are not connected to an active mess.')
+
+    def test_cost_photo_belongs_to_the_member_who_did_the_shopping(self):
+        self.alice.photo = 'profile_photos/alice.jpg'
+        self.alice.save(update_fields=['photo'])
+        response = self.add()
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(response.data['member_photo'], self.alice.photo.url)
+        self.assertEqual(response.data['member_name'], self.alice.full_name)

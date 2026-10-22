@@ -30,6 +30,7 @@ def cost_json(cost):
         "id": cost.id,
         "member_id": cost.performed_by_id,
         "member_name": cost.performed_by.user.full_name,
+        "member_photo": cost.performed_by.user.photo.url if cost.performed_by.user.photo else None,
         "date": cost.date.isoformat(),
         "time": cost.time.strftime('%H:%M') if cost.time else None,
         "total": float(cost.amount),

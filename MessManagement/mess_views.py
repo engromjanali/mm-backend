@@ -111,7 +111,7 @@ class MyMessView(APIView):
             deposits = {row['performed_by_id']: row['total'] for row in Deposit.objects.filter(season=season).values('performed_by_id').annotate(total=Sum('amount'))}
             meals = {row['mess_member_id']: row['total'] for row in Meals.objects.filter(mess_season=season).values('mess_member_id').annotate(total=Sum('total_meals'))}
             member_stats['member_stats'] = [
-                {'id': m.id, 'name': m.user.full_name, 'deposit': float(deposits.get(m.id, 0)), 'meal': float(meals.get(m.id, 0))}
+                {'id': m.id, 'name': m.user.full_name, 'photo': m.user.photo.url if m.user.photo else None, 'deposit': float(deposits.get(m.id, 0)), 'meal': float(meals.get(m.id, 0))}
                 for m in MessMemberShip.objects.select_related('user').filter(season=season).order_by('user__full_name', 'id')
             ]
 

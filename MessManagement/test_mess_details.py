@@ -181,7 +181,7 @@ class MyMessAPITests(APITestCase):
         for user in (self.manager, self.bob):
             data = self.get_mess(user).data
             rows = {row['id']: row for row in data['member_stats']}
-            self.assertEqual(rows[alice_m.id], {'id': alice_m.id, 'name': 'alice', 'deposit': 2200.0, 'meal': 2.5})
+            self.assertEqual(rows[alice_m.id], {'id': alice_m.id, 'name': 'alice', 'photo': None, 'deposit': 2200.0, 'meal': 2.5})
             self.assertEqual((rows[self.manager_m.id]['deposit'], rows[self.manager_m.id]['meal']), (0, 0))
             self.assertEqual(data['stats']['meal_rate'], 100)
         self.assertNotIn('member_stats', self.get_mess(self.alice).data)
@@ -201,4 +201,4 @@ class MyMessAPITests(APITestCase):
         self.manager.save(update_fields=['current_membership'])
         data = self.get_mess(self.manager).data
         self.assertEqual(data['season']['id'], other_season.id)
-        self.assertEqual(data['member_stats'], [{'id': selected.id, 'name': 'Manager Mia', 'deposit': 900.0, 'meal': 0.0}])
+        self.assertEqual(data['member_stats'], [{'id': selected.id, 'name': 'Manager Mia', 'photo': None, 'deposit': 900.0, 'meal': 0.0}])

@@ -444,7 +444,7 @@ def _admin_meal_payload(season, mutation=None, message=None):
     payload = {
         "season": {"id": season.id, "name": season.name},
         "members": [
-            {"id": m.id, "name": m.user.full_name, "role": m.role, "active": _is_active(m)}
+            {"id": m.id, "name": m.user.full_name, "photo": m.user.photo.url if m.user.photo else None, "role": m.role, "active": _is_active(m)}
             for m in members
         ],
         "meal_rate": float(meal_rate),
