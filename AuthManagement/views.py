@@ -47,6 +47,14 @@ def authentication_response(user, message):
     }
 
 
+class LogoutView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        # JWTs are stateless; the client clears its tokens after this response.
+        return Response({"message": "Logged out successfully."}, status=status.HTTP_200_OK)
+
+
 class SignUpView(generics.CreateAPIView):
     serializer_class = SignUpSerializer
     permission_classes = [permissions.AllowAny]

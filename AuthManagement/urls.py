@@ -3,6 +3,7 @@ from django.urls import path
 from .views import (
     ChangePasswordView,
     ForgotPasswordView,
+    LogoutView,
     ProfileView,
     RefreshTokenView,
     SignInView,
@@ -18,6 +19,7 @@ urlpatterns = [
     # Older app builds read the config here; it now lives at /api/v1/app/config.
     path('config', AppConfigView.as_view(), name='config'),
     path("test", testfunc, name="test"),
+    path("logout", LogoutView.as_view(), name="logout"),
     path("sign-in", SignInView.as_view(), name="sign-in"),
     path("sign-up", SignUpView.as_view(), name="sign-up"),
     path("refresh-token", RefreshTokenView.as_view(), name="refresh-token"),

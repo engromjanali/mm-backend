@@ -184,3 +184,25 @@ class MemberManagementAPITests(APITestCase):
         # alice_m belongs to July; the manager now works in August.
         self.assertRejected(self.act('disable', self.alice_m), 'Member not found in the current season.', 404)
         self.assertRejected(self.act('transfer-ownership', self.alice_m), 'Member not found in the current season.', 404)
+
+    def test_profile_role_tracks_current_server_permissions(self):
+        for user, expected in ((self.manager, 'manager'), (self.alice, 'member')):
+            self.as_user(user)
+            profile = self.client.get('/api/v1/auth/update-profile')
+            self.assertEqual(profile.status_code, 200, profile.data)
+            self.assertEqual(profile.data['role'], expected)
+        self.as_user(self.manager)
+        self.assertEqual(self.act('acting-manager', self.bob_m).status_code, 200)
+        self.as_user(self.bob)
+        self.assertEqual(self.client.get('/api/v1/auth/update-profile').data['role'], 'acting_manager')
+
+    def test_profile_role_is_read_only_and_ownership_transfer_refreshes_it(self):
+        self.as_user(self.alice)
+        profile = self.client.patch('/api/v1/auth/update-profile', {'role': 'manager'}, format='json')
+        self.assertEqual(profile.status_code, 200, profile.data)
+        self.assertEqual(profile.data['user']['role'], 'member')
+        self.as_user(self.manager)
+        self.assertEqual(self.act('transfer-ownership', self.alice_m).status_code, 200)
+        self.assertEqual(self.client.get('/api/v1/auth/update-profile').data['role'], 'member')
+        self.as_user(self.alice)
+        self.assertEqual(self.client.get('/api/v1/auth/update-profile').data['role'], 'manager')

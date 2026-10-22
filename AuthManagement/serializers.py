@@ -40,17 +40,29 @@ class UserProfileSerializer(AliasInputMixin, serializers.ModelSerializer):
     )
     # Mess of the user's membership in an active season; null means join or create one.
     active_mess_id = serializers.SerializerMethodField()
+    role = serializers.SerializerMethodField()
 
     class Meta:
         model = User
-        fields = ["id", "photo", "full_name", "email", "phone", "password", "address", "lat", "long", "active_mess_id", "deletion_scheduled_for"]
+        fields = ["id", "photo", "full_name", "email", "phone", "password", "address", "lat", "long", "active_mess_id", "role", "deletion_scheduled_for"]
         read_only_fields = ["id", "deletion_scheduled_for"]
 
-    def get_active_mess_id(self, obj):
+    def _current_access(self, obj):
         from MessManagement.utils import get_current_access
 
-        context = get_current_access(obj)
+        if not hasattr(self, '_access_contexts'):
+            self._access_contexts = {}
+        if obj.pk not in self._access_contexts:
+            self._access_contexts[obj.pk] = get_current_access(obj)
+        return self._access_contexts[obj.pk]
+
+    def get_active_mess_id(self, obj):
+        context = self._current_access(obj)
         return context.mess_id if context else None
+
+    def get_role(self, obj):
+        context = self._current_access(obj)
+        return context.role if context else 'member'
 
     def validate_password(self, value):
         user = self.instance
