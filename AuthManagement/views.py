@@ -1,10 +1,11 @@
 import secrets
+from smtplib import SMTPException
 from datetime import timedelta
 from zoneinfo import ZoneInfo
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.core.mail import send_mail
+from django.core.mail import get_connection, send_mail
 from django.db import transaction
 from django.http import HttpResponse
 from django.utils import timezone
@@ -122,21 +123,33 @@ class ForgotPasswordView(APIView):
         lookup = {f"{sign_in_type}__iexact": identifier}
         user = User.objects.filter(**lookup, is_active=True).first()
 
-        # Use the same public response whether an account exists or not.
-        if user:
-            PasswordResetOTP.objects.filter(user=user, used_at__isnull=True).update(
-                used_at=timezone.now()
-            )
-            otp = self._create_unique_otp(user)
-            send_mail(
-                subject="Your password reset code",
-                message=(
-                    f"Your password reset code is {otp}. "
-                    f"It expires in {settings.PASSWORD_RESET_OTP_LIFETIME_MINUTES} minutes."
-                ),
-                from_email=settings.DEFAULT_FROM_EMAIL,
-                recipient_list=[user.email],
-                fail_silently=False,
+        # Open the mail connection for every request, so transport failures do
+        # not reveal whether the requested account exists.
+        try:
+            with get_connection() as connection:
+                if user:
+                    with transaction.atomic():
+                        PasswordResetOTP.objects.filter(user=user, used_at__isnull=True).update(
+                            used_at=timezone.now()
+                        )
+                        otp = self._create_unique_otp(user)
+                        sent = send_mail(
+                            subject="Your password reset code",
+                            message=(
+                                f"Your password reset code is {otp}. "
+                                f"It expires in {settings.PASSWORD_RESET_OTP_LIFETIME_MINUTES} minutes."
+                            ),
+                            from_email=settings.DEFAULT_FROM_EMAIL,
+                            recipient_list=[user.email],
+                            fail_silently=False,
+                            connection=connection,
+                        )
+                        if sent != 1:
+                            raise SMTPException("Message was not accepted.")
+        except (SMTPException, OSError):
+            return Response(
+                {"message": "Password reset email is temporarily unavailable. Please try again later."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
 
         return Response(
