@@ -27,6 +27,18 @@ class NoticeAPITests(APITestCase):
 
     # -- read ----------------------------------------------------------------
 
+    def test_detail_is_scoped_to_active_mess(self):
+        notice_id = self.publish().data['id']
+        self.client.force_authenticate(user=self.alice)
+        response = self.client.get(f'/api/v1/user/notices/{notice_id}')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['id'], notice_id)
+        other = User.objects.create_user(email='other@test.com', phone='01799999999', full_name='Other', password='pass12345')
+        self.client.force_authenticate(user=other)
+        self.client.post('/api/v1/user/messes/create', {'name': 'Other house', 'season_name': 'Current'}, format='json')
+        self.assertEqual(self.client.get(f'/api/v1/user/notices/{notice_id}').status_code, 404)
+        self.assertEqual(self.client.get('/api/v1/user/notices/999999').status_code, 404)
+
     def test_members_and_manager_read_pinned_first_then_newest(self):
         first = self.publish('First').data['id']
         second = self.publish('Second').data['id']

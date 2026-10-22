@@ -9,7 +9,7 @@ Put new or changed endpoints under the prefix that matches who calls them, and k
 
 ## Code organization
 
-- Each app keeps `models.py`, `views.py`, `user_urls.py` (mounted at `/api/v1/user/`), `admin_urls.py` (mounted at `/api/v1/admin/`) and `tests.py`; shared helpers go in the app's `utils.py`.
+- Keep code in the matching Django app. Current user/admin routes use `user_urls.py` and `admin_urls.py`; public/auth routes use their existing URL modules. Views and tests may be split by feature (`notice_views.py`, `season_views.py`, `test_*.py`); shared helpers go in the app's `utils.py`.
 - In `views.py`, user views come before admin views, each group under a section comment.
 - One migration per logical change, with a descriptive `--name`.
 - Put new code in the section it belongs to; when a file you touch is disorganized, tidy the related part and point out the rest.
@@ -23,4 +23,4 @@ The Flutter app shows backend error messages to the user as-is, so every error m
 
 ## Roles: the manager is also a member
 
-A manager / acting manager is also a member of the season (they have their own `MessMemberShip`). Admin endpoints must not exclude the manager from member lists or totals, and user ("my …") endpoints must work for the manager too.
+A manager / acting manager may have their own season membership and personal totals. Include their real membership in member lists and let user ("my …") endpoints work for them. Leaders can also access historical seasons without a personal membership; do not fabricate a `MessMemberShip` or personal financial records for that context.

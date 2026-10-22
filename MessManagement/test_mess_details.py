@@ -60,6 +60,7 @@ class MyMessAPITests(APITestCase):
         self.assertIsNone(data['joined_at'])
         self.assertFalse(MessMemberShip.objects.filter(user=self.manager, season=historical).exists())
         self.assertEqual(data['members'], [])
+        self.assertEqual(data['my_stats'], {'meal': 0, 'deposit': 0, 'remaining': 0})
         self.assertEqual(data['permissions'], {'can_edit': True, 'can_transfer': True, 'can_leave': False})
 
     def test_permissions_follow_role(self):
@@ -76,7 +77,10 @@ class MyMessAPITests(APITestCase):
         Deposit.objects.create(season=season, performed_by=alice_m, amount=Decimal('-300'))
         Fund.objects.create(mess=self.mess, amount=Decimal('800'), date=date(2026, 7, 1))
 
-        stats = self.get_mess(self.alice).data['stats']
+        data = self.get_mess(self.alice).data
+        self.assertEqual(data['my_stats'], {'meal': 1.5, 'deposit': 1700.0, 'remaining': 1550.0})
+        self.assertNotIn('member_stats', data)
+        stats = data['stats']
         self.assertEqual(stats, {'members': 3, 'total_meals': 5.0, 'meal_rate': 100.0, 'total_cost': 500.0, 'total_deposit': 1700.0, 'fund_balance': 800.0})
 
     def test_members_who_left_are_not_listed(self):

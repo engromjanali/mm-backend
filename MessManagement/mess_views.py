@@ -115,8 +115,15 @@ class MyMessView(APIView):
                 for m in MessMemberShip.objects.select_related('user').filter(season=season).order_by('user__full_name', 'id')
             ]
 
+        stats = _season_stats(season, mess, len(members))
+        membership = context.membership
+        my_deposit = signed_amount_summary(Deposit.objects.filter(season=season, performed_by=membership))['net'] if membership else 0
+        my_meals = (Meals.objects.filter(mess_season=season, mess_member=membership).aggregate(total=Sum('total_meals'))['total'] or 0) if membership else 0
+        my_remaining = float(my_deposit) - float(my_meals) * stats['meal_rate']
+
         return Response({
             **member_stats,
+            "my_stats": {"deposit": float(my_deposit), "meal": float(my_meals), "remaining": my_remaining},
             "id": mess.id,
             "name": mess.name,
             "address": mess.address,
@@ -138,7 +145,7 @@ class MyMessView(APIView):
                 {"membership_id": m.id, "user_id": m.user_id, "name": m.user.full_name, "role": mess.role_of(m.user_id), "joined_at": m.joined_at}
                 for m in members
             ],
-            "stats": _season_stats(season, mess, len(members)),
+            "stats": stats,
             "permissions": {
                 "can_edit": role in MANAGER_ROLES,
                 "can_transfer": role == 'manager',

@@ -1,132 +1,120 @@
-# Mess Management System — API Roadmap
+# API implementation inventory and follow-up work
 
-## 1. AuthManagement
-| Endpoint | Method | Status |
-|---|---|---|
-| `/api/v1/auth/sign-up` | POST | ✅ Done |
-| `/api/v1/auth/sign-in` | POST | ✅ Done |
-| `/api/v1/auth/refresh-token` | POST | ✅ Done |
-| `/api/v1/auth/forgot-password` | POST | ✅ Done |
-| `/api/v1/auth/change-password` | POST | ✅ Done |
-| `/api/v1/auth/profile` | GET | ✅ Done |
-| `/api/v1/auth/update-profile` | GET / PUT / PATCH | ✅ Done |
-| `/api/v1/auth/config` | GET | ✅ Done |
+Routes below are wired in the current Django URL configuration as of 23 October
+2026. This is an implementation inventory, not a guarantee that every deployed
+environment has the same code or configuration. Examples are in
+[POSTMAN_API_EXAMPLES.md](POSTMAN_API_EXAMPLES.md).
 
----
+Current APIs use the caller's server-selected context. Admin APIs check manager
+or acting-manager permissions; leadership transfers require the primary manager.
+Some user routes, such as mess discovery, are public.
 
-## 2. MessManagement
-| Endpoint | Method | Status |
-|---|---|---|
-| `/api/v1/mess/create/` | POST | ✅ Done |
-| `/api/v1/mess/list` | GET | ✅ Done |
-| `/api/v1/mess/join/` | POST | ✅ Done |
-| `/api/v1/mess/<id>/` | GET | 🔲 Planned |
-| `/api/v1/mess/<id>/update/` | PUT / PATCH | 🔲 Planned |
-| `/api/v1/mess/<id>/seasons/` | GET / POST | 🔲 Planned |
-| `/api/v1/mess/<id>/members/` | GET | 🔲 Planned |
-| `/api/v1/mess/<id>/membership-requests/` | GET / POST | 🔲 Planned |
-| `/api/v1/mess/<id>/invitations/` | GET / POST | 🔲 Planned |
+## Public app content
 
----
+| Endpoint | Methods |
+|---|---|
+| `/api/v1/app/config` | GET |
+| `/api/v1/app/pages/<slug:kind>` | GET |
+| `/api/v1/app/faqs` | GET |
 
-## 2a. Membership (user / admin)
-Manager & acting manager are stored on `Mess`; a member's role is derived from it. Users join a mess only through a membership in a running season; the manager picks it when inviting or approving a join request.
+## Authentication
 
-| Endpoint | Method | Status |
-|---|---|---|
-| `/api/v1/user/messes` (public) | GET | ✅ Done |
-| `/api/v1/user/messes/create` | POST | ✅ Done |
-| `/api/v1/user/membership/status` | GET | ✅ Done |
-| `/api/v1/user/membership/leave` | POST | ✅ Done |
-| `/api/v1/user/join-requests` | POST | ✅ Done |
-| `/api/v1/user/join-requests/<id>` | DELETE | ✅ Done |
-| `/api/v1/user/invites/accept` | POST | ✅ Done |
-| `/api/v1/user/invites/decline` | POST | ✅ Done |
-| `/api/v1/admin/member-lookup` | GET | ✅ Done |
-| `/api/v1/admin/invites` | GET / POST / DELETE | ✅ Done |
-| `/api/v1/admin/join-requests` | GET | ✅ Done |
-| `/api/v1/admin/join-requests/decision` | POST | ✅ Done |
-| `/api/v1/admin/members` | GET | ✅ Done |
-| `/api/v1/admin/seasons` | GET / POST (new season, carries members) | ✅ Done |
-| `/api/v1/admin/mess` (details / update) | GET / PATCH | 🔲 Planned |
-| `/api/v1/admin/mess/leadership` (transfer manager) | POST | 🔲 Planned |
+| Endpoint | Methods |
+|---|---|
+| `/api/v1/auth/config` | GET |
+| `/api/v1/auth/test` | GET |
+| `/api/v1/auth/logout` | POST |
+| `/api/v1/auth/sign-in` | POST |
+| `/api/v1/auth/sign-up` | POST |
+| `/api/v1/auth/refresh-token` | POST |
+| `/api/v1/auth/forgot-password` | POST |
+| `/api/v1/auth/change-password` | POST |
+| `/api/v1/auth/profile` | GET |
+| `/api/v1/auth/update-profile` | GET / PUT / PATCH |
 
----
+## User APIs
 
-## 2b. Deposits (active season)
-Positive `amount` = credit, negative = debit. A manager is also a member, so they appear in member lists/totals and have their own deposits.
+| Endpoint | Methods |
+|---|---|
+| `/api/v1/user/account/delete` | POST / DELETE |
+| `/api/v1/user/messes` | GET |
+| `/api/v1/user/messes/create` | POST |
+| `/api/v1/user/membership/status` | GET |
+| `/api/v1/user/membership/leave` | POST |
+| `/api/v1/user/membership/switch` | POST |
+| `/api/v1/user/mess` | GET / PATCH |
+| `/api/v1/user/mess/location-search` | GET |
+| `/api/v1/user/join-requests` | POST / DELETE |
+| `/api/v1/user/join-requests/<int:pk>` | POST / DELETE |
+| `/api/v1/user/invites/accept` | POST |
+| `/api/v1/user/invites/decline` | POST |
+| `/api/v1/user/notices/<int:pk>` | GET |
+| `/api/v1/user/notices` | GET |
+| `/api/v1/user/opinions` | GET |
+| `/api/v1/user/opinions/<int:pk>/messages` | GET / POST |
+| `/api/v1/user/deposits` | GET |
+| `/api/v1/user/funds` | GET |
+| `/api/v1/user/costs` | GET |
+| `/api/v1/user/meals` | GET |
 
-| Endpoint | Method | Status |
-|---|---|---|
-| `/api/v1/user/deposits` (my deposits + totals) | GET | ✅ Done |
-| `/api/v1/admin/deposits?member_id=&date=&start=&end=` | GET / POST | ✅ Done |
-| `/api/v1/admin/deposits/<id>` | PATCH / DELETE | ✅ Done |
-| `/api/v1/admin/deposits/summary` (mess totals, member balances, mine) | GET | ✅ Done |
+## Manager APIs
 
----
+| Endpoint | Methods |
+|---|---|
+| `/api/v1/admin/member-lookup` | GET |
+| `/api/v1/admin/invites` | GET / POST / DELETE |
+| `/api/v1/admin/join-requests` | GET |
+| `/api/v1/admin/join-requests/decision` | POST |
+| `/api/v1/admin/members` | GET |
+| `/api/v1/admin/members/<int:pk>/disable` | POST |
+| `/api/v1/admin/members/<int:pk>/enable` | POST |
+| `/api/v1/admin/members/<int:pk>/acting-manager` | POST / DELETE |
+| `/api/v1/admin/members/<int:pk>/transfer-ownership` | POST |
+| `/api/v1/admin/seasons` | GET / POST |
+| `/api/v1/admin/seasons/auto-create` | GET / PUT |
+| `/api/v1/admin/seasons/<int:pk>` | PATCH / DELETE |
+| `/api/v1/admin/seasons/<int:pk>/end` | POST |
+| `/api/v1/admin/seasons/<int:pk>/disable` | POST |
+| `/api/v1/admin/seasons/<int:pk>/enable` | POST |
+| `/api/v1/admin/seasons/<int:pk>/switch` | POST |
+| `/api/v1/admin/notices` | POST |
+| `/api/v1/admin/notices/<int:pk>` | PATCH / DELETE |
+| `/api/v1/admin/notices/<int:pk>/pin` | POST |
+| `/api/v1/admin/opinions` | POST |
+| `/api/v1/admin/opinions/<int:pk>` | PATCH |
+| `/api/v1/admin/opinions/<int:pk>/publish` | POST |
+| `/api/v1/admin/deposits` | GET / POST |
+| `/api/v1/admin/deposits/summary` | GET |
+| `/api/v1/admin/deposits/<int:pk>` | PATCH / DELETE |
+| `/api/v1/admin/funds` | POST |
+| `/api/v1/admin/funds/<int:pk>` | PATCH / DELETE |
+| `/api/v1/admin/costs` | POST |
+| `/api/v1/admin/costs/<int:pk>` | PATCH / DELETE |
+| `/api/v1/admin/meals` | GET / PATCH / DELETE |
+| `/api/v1/admin/meals/bulk` | POST |
 
-## 2c. Funds (whole mess)
-Shared mess money, not tied to a member. Belongs to the mess, not a season — it carries over when a new season starts. Positive `amount` = credit, negative = debit. Every member (manager included) reads; only the manager / acting manager writes.
+## Scheduled jobs
 
-| Endpoint | Method | Status |
-|---|---|---|
-| `/api/v1/user/funds?date=&start_date=&end_date=` (list + totals + overall `balance`) | GET | ✅ Done |
-| `/api/v1/admin/funds` | POST | ✅ Done |
-| `/api/v1/admin/funds/<id>` | PATCH / DELETE | ✅ Done |
+| Endpoint | Methods |
+|---|---|
+| `/api/v1/cron/expire-invites-and-requests` | GET |
+| `/api/v1/cron/create-scheduled-seasons` | GET |
 
----
+## Compatibility routes
 
-## 3. NoticeManagement
-| Endpoint | Method | Status |
-|---|---|---|
-| `/api/v1/notice/create` | POST | ✅ Done |
-| `/api/v1/notice/update` | PUT / PATCH / POST | ✅ Done |
-| `/api/v1/notice/delete` | DELETE / POST | ✅ Done |
-| `/api/v1/notice/list` | GET | ✅ Done |
-| `/api/v1/notice/{id}` | GET | ✅ Done |
-| `/api/v1/notice/pin` | GET | ✅ Done |
-| `/api/v1/notice/set-pined-notice` | POST | ✅ Done |
+Legacy `/api/v1/mess/`, `/api/v1/notice/`, and `/api/v1/meal/` routes remain mounted.
+Their older header/payload conventions differ from the APIs above. Empty legacy
+cost/deposit/fund URL modules do not make the previously proposed endpoints
+implemented; use the current user/admin routes.
 
----
+## Follow-up work
 
-## 3. MealManagement
-| Endpoint | Method | Status |
-|---|---|---|
-| `/api/v1/meal/add` | POST | ✅ Done |
-| `/api/v1/meal/update` | PUT / PATCH / POST | ✅ Done |
-| `/api/v1/meal/delete` | DELETE / POST | ✅ Done |
-| `/api/v1/meal/list` | GET | ✅ Done |
-| `/api/v1/meal/list-all` | GET | ✅ Done |
-| `/api/v1/meal/{id}` | GET | ✅ Done |
+- Server-side JWT/session revocation on logout, when session invalidation is required.
+  Logout currently acknowledges the request and the app clears its local tokens.
+- Authentication/password-reset rate limiting and abuse protection.
+- Pagination and incremental loading for growing notice lists.
+- Deployment checks for SMTP delivery, persistent uploads, and scheduled jobs.
 
-Writes (`add` / `update` / `delete`) are Manager / Acting Manager only.
-`list` returns the caller's own meals; `list-all` returns every member's.
-Both accept `?date=DD-MM-YYYY` or `?start_date=…&end_date=…`.
-
----
-
-## 4. CostManagement (active season)
-A shopping (bazar) entry: the member who shopped, date + time, and product / price rows; its total is the sum of the prices. Every member (manager included) reads; only the manager / acting manager writes. A new season starts with an empty list.
-
-| Endpoint | Method | Status |
-|---|---|---|
-| `/api/v1/user/costs` (season + list + totals) | GET | ✅ Done |
-| `/api/v1/admin/costs` | POST | ✅ Done |
-| `/api/v1/admin/costs/<id>` (`items` replaces every product) | PATCH / DELETE | ✅ Done |
-
----
-
-## 5. DepositManagement
-| Endpoint | Method | Status |
-|---|---|---|
-| `/api/v1/deposit/create/` | POST | 🔲 Planned |
-| `/api/v1/deposit/<id>/` | GET / PUT / DELETE | 🔲 Planned |
-| `/api/v1/deposit/season/<season_id>/` | GET | 🔲 Planned |
-
----
-
-## 6. FundManagement
-| Endpoint | Method | Status |
-|---|---|---|
-| `/api/v1/fund/overview/` | GET | 🔲 Planned |
-| `/api/v1/fund/breakdown/` | GET / POST | 🔲 Planned |
+Personal Home totals (`my_stats`) and a mess-scoped single-notice endpoint are
+implemented. Notices persist across seasons; funds carry across seasons, while
+meals, deposits, and costs are scoped to the selected season.

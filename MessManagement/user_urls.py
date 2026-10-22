@@ -10,7 +10,7 @@ from .membership_views import (
     SwitchMembershipView,
 )
 from .mess_views import MessLocationSearchView, MyMessView
-from .notice_views import NoticeListView
+from .notice_views import NoticeListView, NoticeDetailView
 from MessManagement.opinion_views import OpinionPeriodListView, OpinionMessagesView
 
 urlpatterns = [
@@ -25,6 +25,7 @@ urlpatterns = [
     path('join-requests/<int:pk>', JoinRequestView.as_view(), name='user-join-request-cancel'),
     path('invites/accept', InviteResponseView.as_view(accept=True), name='user-invite-accept'),
     path('invites/decline', InviteResponseView.as_view(accept=False), name='user-invite-decline'),
+    path('notices/<int:pk>', NoticeDetailView.as_view(), name='user-notice-detail'),
     path('notices', NoticeListView.as_view(), name='user-notices'),
     path('opinions', OpinionPeriodListView.as_view(), name='user-opinions'),
     path('opinions/<int:pk>/messages', OpinionMessagesView.as_view(), name='user-opinion-messages'),

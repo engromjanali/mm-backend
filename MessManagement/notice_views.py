@@ -117,6 +117,19 @@ class NoticeListView(APIView):
         return Response({"data": [notice_json(n) for n in notices]})
 
 
+class NoticeDetailView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, pk):
+        context = get_current_access(request.user)
+        if not context:
+            raise NotFound()
+        notice = Notices.objects.filter(pk=pk, mess=context.mess).first()
+        if notice is None:
+            raise NotFound()
+        return Response(notice_json(notice))
+
+
 # ---------------------------------------------------------------------------
 # Admin endpoints  (/api/v1/admin/...)  — manager / acting manager only
 # ---------------------------------------------------------------------------
