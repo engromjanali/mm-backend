@@ -1,5 +1,6 @@
 from django.urls import path
 
+from .push import PushDeviceView
 from .views import (
     ChangePasswordView,
     ForgotPasswordView,
@@ -16,6 +17,7 @@ from ContentManagement.views import AppConfigView
 app_name = "auth_management"
 
 urlpatterns = [
+    path("push-device", PushDeviceView.as_view(), name="push-device"),
     # Older app builds read the config here; it now lives at /api/v1/app/config.
     path('config', AppConfigView.as_view(), name='config'),
     path("test", testfunc, name="test"),

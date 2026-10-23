@@ -105,3 +105,10 @@ class PasswordResetOTP(models.Model):
 
     def __str__(self):
         return f"Password reset for {self.user.email}"
+
+
+class PushDevice(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='push_devices')
+    token = models.CharField(max_length=512, unique=True)
+    topics = models.JSONField(default=list)
+    updated_at = models.DateTimeField(auto_now=True)
