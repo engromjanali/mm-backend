@@ -136,6 +136,11 @@ class PushDeviceView(APIView):
         return Response(status=204)
 
 
+def notice_notification_content(notice_title):
+    body = (notice_title.encode('utf-8')[:3000].decode('utf-8', errors='ignore') + '…') if len(notice_title.encode('utf-8')) > 3000 else notice_title
+    return {'title': 'New Notice', 'body': body}
+
+
 def send_notice_notification(notice_id, season_id, notice_title):
     # Never roll back a published notice because the push provider is unavailable.
     try:
@@ -158,7 +163,7 @@ def send_notice_notification(notice_id, season_id, notice_title):
             messaging = firebase_messaging()
             messaging.send(messaging.Message(
                 topic=topic,
-                notification=messaging.Notification(title='New Notice', body=(notice_title.encode('utf-8')[:3000].decode('utf-8', errors='ignore') + '…') if len(notice_title.encode('utf-8')) > 3000 else notice_title),
+                notification=messaging.Notification(**notice_notification_content(notice_title)),
                 data={'type': 'notice', 'notice_id': str(notice_id), 'season_id': str(season_id)},
             ))
     except Exception:

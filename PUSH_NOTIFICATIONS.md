@@ -18,3 +18,5 @@ FCM topics are not an authorization boundary: another modified client can subscr
 If registration returns `PERMISSION_DENIED`, grant the service account used by the key the Firebase Cloud Messaging Service Editor role (`roles/cloudmessaging.editor`) on the Firebase project in Google Cloud IAM. Topic management requires `cloudmessaging.topicSubscriptions.create` and `cloudmessaging.topicSubscriptions.delete`; message delivery requires `cloudmessaging.messages.create`. Topics are created automatically when a device subscribes. Provider subscription failures return a sanitized HTTP 503; invalid/unregistered devices return HTTP 400.
 
 IAM role reference: https://docs.cloud.google.com/iam/docs/roles-permissions/firebasecloudmessaging
+
+Flutter notification lifecycle handling lives in `lib/core/helpers/notification_helper.dart` (`NotificationHelper`): payload validation, foreground system display, local/FCM notification taps, background-open events, terminated launch destinations, and listener cleanup. `main.dart` initializes/starts/disposes the helper; `AppRoutes` only defines routes. FCM itself displays notification payloads in the background.
