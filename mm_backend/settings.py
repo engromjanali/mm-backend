@@ -73,6 +73,7 @@ INSTALLED_APPS = [
     'FundManagement',
     'DepositManagement',
     'ContentManagement',
+    'FeedbackManagement',
 ]
 
 MIDDLEWARE = [
