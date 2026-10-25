@@ -16,6 +16,8 @@ from rest_framework.exceptions import APIException, NotFound, ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from AuthManagement.notifications import save_notice_notifications
+from AuthManagement.push import send_notice_notification
 from .membership_views import get_managed_membership
 from .models import Notices
 from .utils import get_current_access
@@ -149,6 +151,8 @@ class AdminNoticeCreateView(APIView):
             notice = Notices.objects.create(mess=manager.mess, title=data['title'], content=data['description'])
             if data.get('pinned'):
                 _pin(notice, True)
+            save_notice_notifications(notice, manager.season)
+            transaction.on_commit(lambda: send_notice_notification(notice.id, manager.season_id, notice.title))
         return Response(notice_json(notice), status=status.HTTP_201_CREATED)
 
 

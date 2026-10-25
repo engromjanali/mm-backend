@@ -40,7 +40,7 @@ if not SECRET_KEY:
 DEBUG = os.getenv('DJANGO_DEBUG', 'False').lower() in {'1', 'true', 'yes'}
 GOOGLE_MAPS_API_KEY = os.getenv('GOOGLE_MAPS_API_KEY', '')
 
-ALLOWED_HOSTS = ['localhost', '127.0.0.1', '.vercel.app', '192.168.0.212', '192.168.0.109']
+ALLOWED_HOSTS = ['localhost', '127.0.0.1', '10.0.2.2', '.vercel.app', '192.168.0.212', '192.168.0.109']
 ALLOWED_HOSTS += [
     host.strip()
     for host in os.getenv('DJANGO_ALLOWED_HOSTS', '').split(',')
@@ -112,6 +112,7 @@ from corsheaders.defaults import default_headers
 
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:50533",
+    "https://messpilot.goraso.com",
 ]
 
 CORS_ALLOW_HEADERS = list(default_headers) + [
@@ -272,3 +273,6 @@ EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
 EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
 EMAIL_USE_SSL = os.getenv('EMAIL_USE_SSL', 'False').lower() in {'1', 'true', 'yes'}
 EMAIL_TIMEOUT = int(os.getenv('EMAIL_TIMEOUT', '20'))
+
+# Service-account JSON or base64-encoded JSON; keep the key in environment configuration.
+FIREBASE_SERVICE_ACCOUNT_JSON = os.getenv('FIREBASE_SERVICE_ACCOUNT_JSON', '')

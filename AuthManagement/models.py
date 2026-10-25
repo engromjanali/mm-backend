@@ -105,3 +105,25 @@ class PasswordResetOTP(models.Model):
 
     def __str__(self):
         return f"Password reset for {self.user.email}"
+
+
+class PushDevice(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='push_devices')
+    token = models.CharField(max_length=512, unique=True)
+    topics = models.JSONField(default=list)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
+class Notification(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='notifications')
+    season = models.ForeignKey('MessManagement.MessSeason', on_delete=models.SET_NULL, null=True)
+    notice_id = models.PositiveBigIntegerField()
+    title = models.CharField(max_length=200)
+    description = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    read_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-id']
+        indexes = [models.Index(fields=['user', '-id'], name='notification_user_id_idx')]
+        constraints = [models.UniqueConstraint(fields=['user', 'notice_id'], name='notification_user_notice_unique')]
