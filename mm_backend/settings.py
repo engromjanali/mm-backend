@@ -112,6 +112,7 @@ from corsheaders.defaults import default_headers
 
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:50533",
+    "https://messpilot.goraso.com",
 ]
 
 CORS_ALLOW_HEADERS = list(default_headers) + [
