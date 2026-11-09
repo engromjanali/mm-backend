@@ -9,13 +9,19 @@ Current APIs use the caller's server-selected context. Admin APIs check manager
 or acting-manager permissions; leadership transfers require the primary manager.
 Some user routes, such as mess discovery, are public.
 
-## Public app content
+## Public app content and legal pages
 
-| Endpoint | Methods |
-|---|---|
-| `/api/v1/app/config` | GET |
-| `/api/v1/app/pages/<slug:kind>` | GET |
-| `/api/v1/app/faqs` | GET |
+| Endpoint | Methods | Notes |
+|---|---|---|
+| `/privacy-policy/` | GET | Public web page (HTML) or JSON (`?format=json` / `Accept: application/json`). Aliases: `/privacy/`, `/privacy-policy`, `/privacy` |
+| `/terms-and-conditions/` | GET | Public web page (HTML) or JSON (`?format=json` / `Accept: application/json`). Aliases: `/terms/`, `/terms-and-conditions`, `/terms` |
+| `/api/v1/app/config` | GET | Includes `privacy_policy_url` and `terms_and_conditions_url` |
+| `/api/v1/app/privacy-policy` | GET | Direct public JSON API endpoint |
+| `/api/v1/app/terms-and-conditions` | GET | Direct public JSON API endpoint |
+| `/api/v1/privacy-policy` | GET | Direct public JSON API endpoint |
+| `/api/v1/terms-and-conditions` | GET | Direct public JSON API endpoint |
+| `/api/v1/app/pages/<slug:kind>` | GET | Public JSON content page |
+| `/api/v1/app/faqs` | GET | Active FAQs in requested language |
 
 ## Authentication
 

@@ -4,7 +4,14 @@ from .models import AppSetting
 
 # Still reachable during maintenance: the app's config (so it can show the
 # maintenance screen), public content, scheduled jobs and Django admin.
-OPEN_DURING_MAINTENANCE = ('/api/v1/app/', '/api/v1/auth/config', '/api/v1/cron/', '/admin/')
+OPEN_DURING_MAINTENANCE = (
+    '/api/v1/app/',
+    '/api/v1/auth/config',
+    '/api/v1/cron/',
+    '/admin/',
+    '/api/v1/privacy-policy',
+    '/api/v1/terms-and-conditions',
+)
 
 
 class MaintenanceModeMiddleware:

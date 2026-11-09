@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="{{ page.language|default:'en' }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title }} · Mess Pilot</title>
+  <style>
+    :root {
+      --primary: #176d58;
+      --primary-hover: #135a49;
+      --primary-soft: #e8f2ee;
+      --bg: #f5f6f8;
+      --surface: #ffffff;
+      --text: #252b32;
+      --text-muted: #626b77;
+      --border: #d9dee5;
+      --radius: 12px;
+      --shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --primary: #69c7a5;
+        --primary-hover: #9ee0c6;
+        --primary-soft: #1d332b;
+        --bg: #14171a;
+        --surface: #1e2227;
+        --text: #e6e9ed;
+        --text-muted: #a8b0bb;
+        --border: #333a42;
+        --shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+      }
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.65;
+      padding: 32px 16px 64px;
+      -webkit-font-smoothing: antialiased;
+    }
+    .container {
+      max-width: 820px;
+      margin: 0 auto;
+    }
+    header.site-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+      color: var(--text);
+      font-weight: 700;
+      font-size: 1.15rem;
+    }
+    .brand-mark {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      background: var(--primary);
+      color: #fff;
+      font-size: 0.95rem;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+    }
+    .lang-nav {
+      display: flex;
+      gap: 8px;
+      font-size: 0.85rem;
+    }
+    .lang-link {
+      padding: 4px 10px;
+      border-radius: 6px;
+      text-decoration: none;
+      color: var(--text-muted);
+      border: 1px solid transparent;
+      transition: all 0.15s ease;
+    }
+    .lang-link:hover {
+      color: var(--primary);
+      border-color: var(--border);
+    }
+    .lang-link.active {
+      color: var(--primary);
+      background: var(--primary-soft);
+      font-weight: 600;
+    }
+    main.card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 40px;
+    }
+    @media (max-width: 600px) {
+      main.card { padding: 24px 20px; }
+      body { padding: 16px 12px 48px; }
+    }
+    h1.page-title {
+      font-size: 1.85rem;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 8px;
+      line-height: 1.25;
+    }
+    .meta-date {
+      font-size: 0.875rem;
+      color: var(--text-muted);
+      margin-bottom: 28px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .notice-fallback {
+      background: var(--primary-soft);
+      color: var(--text);
+      border-left: 4px solid var(--primary);
+      padding: 10px 14px;
+      border-radius: 4px;
+      font-size: 0.875rem;
+      margin-bottom: 20px;
+    }
+    .content-body h2 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: var(--text);
+      margin: 28px 0 12px;
+    }
+    .content-body h3 {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: var(--text);
+      margin: 20px 0 10px;
+    }
+    .content-body p {
+      margin-bottom: 16px;
+      color: var(--text);
+      font-size: 1rem;
+    }
+    .content-body ul {
+      margin: 0 0 18px 24px;
+      padding: 0;
+    }
+    .content-body li {
+      margin-bottom: 8px;
+      color: var(--text);
+    }
+    footer.site-footer {
+      margin-top: 32px;
+      text-align: center;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .footer-links {
+      display: flex;
+      justify-content: center;
+      gap: 20px;
+    }
+    .footer-links a {
+      color: var(--primary);
+      text-decoration: none;
+      font-weight: 500;
+    }
+    .footer-links a:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header class="site-header">
+      <a href="/" class="brand">
+        <span class="brand-mark">MM</span>
+        <span>Mess Pilot</span>
+      </a>
+      <nav class="lang-nav" aria-label="Language">
+        <a href="?lang=en" class="lang-link {% if current_language == 'en' %}active{% endif %}">English</a>
+        <a href="?lang=bn" class="lang-link {% if current_language == 'bn' %}active{% endif %}">বাংলা</a>
+        <a href="?lang=ar" class="lang-link {% if current_language == 'ar' %}active{% endif %}">العربية</a>
+      </nav>
+    </header>
+
+    <main class="card">
+      <h1 class="page-title">{{ title }}</h1>
+      <div class="meta-date">Last updated: {{ page.updated_at|date:"F j, Y" }}</div>
+
+      {% if is_fallback %}
+      <div class="notice-fallback">
+        Showing English version (translation for your requested language is not available yet).
+      </div>
+      {% endif %}
+
+      <div class="content-body">
+        {{ body_html|safe }}
+      </div>
+    </main>
+
+    <footer class="site-footer">
+      <div class="footer-links">
+        <a href="{{ other_url }}">{{ other_title }}</a>
+        {% if support_email %}
+        <a href="mailto:{{ support_email }}">Contact Support</a>
+        {% endif %}
+      </div>
+      <div>&copy; Mess Pilot. All rights reserved.</div>
+    </footer>
+  </div>
+</body>
+</html>
+

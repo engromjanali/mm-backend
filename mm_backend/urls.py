@@ -20,6 +20,8 @@ from django.conf.urls.static import static
 from django.urls import path, include
 from django.http import HttpResponse
 
+from ContentManagement.views import ContentPageView, PublicContentWebOrApiView
+
 admin.site.site_header = 'Mess Management'
 admin.site.site_title = 'Mess Management admin'
 admin.site.index_title = 'Overview'
@@ -32,6 +34,18 @@ def testfunc(request):
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('',testfunc,name='test'),
+    # Public legal pages (HTML for browsers, JSON if Accept: application/json or ?format=json)
+    path('privacy-policy/', PublicContentWebOrApiView.as_view(kind='privacy-policy'), name='privacy-policy'),
+    path('privacy-policy', PublicContentWebOrApiView.as_view(kind='privacy-policy')),
+    path('privacy/', PublicContentWebOrApiView.as_view(kind='privacy-policy'), name='privacy'),
+    path('privacy', PublicContentWebOrApiView.as_view(kind='privacy-policy')),
+    path('terms-and-conditions/', PublicContentWebOrApiView.as_view(kind='terms-and-conditions'), name='terms-and-conditions'),
+    path('terms-and-conditions', PublicContentWebOrApiView.as_view(kind='terms-and-conditions')),
+    path('terms/', PublicContentWebOrApiView.as_view(kind='terms-and-conditions'), name='terms'),
+    path('terms', PublicContentWebOrApiView.as_view(kind='terms-and-conditions')),
+    # Direct public API routes
+    path('api/v1/privacy-policy', ContentPageView.as_view(), {'kind': 'privacy-policy'}, name='api-privacy-policy'),
+    path('api/v1/terms-and-conditions', ContentPageView.as_view(), {'kind': 'terms-and-conditions'}, name='api-terms-and-conditions'),
     path('api/v1/app/', include('ContentManagement.urls')),
     path('api/v1/auth/', include('AuthManagement.urls')),
     path('api/v1/user/', include('AuthManagement.user_urls')),

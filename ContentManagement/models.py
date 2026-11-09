@@ -68,6 +68,7 @@ class ContentPage(models.Model):
     language = models.CharField(max_length=5, choices=LANGUAGES, default=DEFAULT_LANGUAGE)
     title = models.CharField(max_length=200)
     body = models.TextField(help_text="Plain text. Separate paragraphs with a blank line; a line starting with '# ' is a heading and '- ' a bullet.")
+    is_public = models.BooleanField(default=True, db_index=True, help_text="Whether this page is publicly accessible.")
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
