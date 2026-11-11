@@ -119,7 +119,7 @@ class MyMessView(APIView):
         membership = context.membership
         my_deposit = signed_amount_summary(Deposit.objects.filter(season=season, performed_by=membership))['net'] if membership else 0
         my_meals = (Meals.objects.filter(mess_season=season, mess_member=membership).aggregate(total=Sum('total_meals'))['total'] or 0) if membership else 0
-        my_remaining = float(my_deposit) - float(my_meals) * stats['meal_rate']
+        my_remaining = round(float(my_deposit) - float(my_meals) * stats['meal_rate'], 2)
 
         return Response({
             **member_stats,
