@@ -17,12 +17,10 @@ class UserManager(BaseUserManager):
     def create_user(self, email, phone, full_name, password=None, **extra_fields):
         if not email:
             raise ValueError("An email address is required.")
-        if not phone:
-            raise ValueError("A phone number is required.")
 
         user = self.model(
             email=self.normalize_email(email).lower(),
-            phone=phone.strip(),
+            phone=phone.strip() if phone else None,
             full_name=full_name,
             **extra_fields,
         )
@@ -45,7 +43,7 @@ class UserManager(BaseUserManager):
 class User(AbstractBaseUser, PermissionsMixin):
     full_name = models.CharField(max_length=150)
     email = models.EmailField(unique=True)
-    phone = models.CharField(max_length=20, unique=True)
+    phone = models.CharField(max_length=20, unique=True, null=True, blank=True)
     photo = models.ImageField(upload_to="profile_photos/", blank=True, null=True)
     address = models.TextField(blank=True)
     latitude = models.DecimalField(max_digits=10, decimal_places=7, blank=True, null=True)

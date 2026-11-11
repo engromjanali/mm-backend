@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.mail import get_connection, send_mail
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.http import HttpResponse
 from django.utils import timezone
 from rest_framework import generics, permissions, status
@@ -20,10 +20,12 @@ from .authentication import (
     create_refresh_token,
     resolve_token_user,
 )
+from .google_auth import verify_google_id_token
 from .models import PasswordResetOTP
 from .serializers import (
     ChangePasswordSerializer,
     ForgotPasswordSerializer,
+    GoogleSignInSerializer,
     RefreshTokenSerializer,
     SignInSerializer,
     SignUpSerializer,
@@ -78,6 +80,65 @@ class SignInView(APIView):
         serializer.is_valid(raise_exception=True)
         user = serializer.validated_data["user"]
         return Response(authentication_response(user, "Signed in successfully."))
+
+
+def _google_full_name(claims, email):
+    """Best-effort display name from the Google token."""
+    name = (claims.get("name") or "").strip()
+    if not name:
+        parts = [claims.get("given_name"), claims.get("family_name")]
+        name = " ".join(part.strip() for part in parts if part and part.strip())
+    if not name:
+        name = email.split("@")[0]
+    return name[:150] or "Google User"
+
+
+def _create_google_user(claims):
+    email = claims["email"]
+    try:
+        with transaction.atomic():
+            user = User.objects.create_user(
+                email=email,
+                phone=None,
+                full_name=_google_full_name(claims, email),
+            )
+        return user, True
+    except IntegrityError:
+        # Another request may have created the same email between the lookup
+        # and the insert; fall back to that account.
+        user = User.objects.filter(email__iexact=email).first()
+        if user is None:
+            raise
+        return user, False
+
+
+class GoogleSignInView(APIView):
+    """Sign in with a Google OAuth ID token, creating the account if needed.
+
+    The Google token only proves who the user is; membership and role still
+    come from the user record. New emails get an account without a phone
+    number, which the user can add from the profile.
+    """
+
+    permission_classes = [permissions.AllowAny]
+    authentication_classes = []
+
+    def post(self, request):
+        serializer = GoogleSignInSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        claims = verify_google_id_token(serializer.validated_data["id_token"])
+        email = claims["email"]
+        user = User.objects.filter(email__iexact=email).first()
+        if user is None:
+            user, created = _create_google_user(claims)
+            if created:
+                return Response(
+                    authentication_response(user, "Account created and signed in with Google successfully."),
+                    status=status.HTTP_201_CREATED,
+                )
+        if not user.is_active:
+            raise ValidationError({"detail": "This account is inactive."})
+        return Response(authentication_response(user, "Signed in with Google successfully."))
 
 
 class RefreshTokenView(APIView):
