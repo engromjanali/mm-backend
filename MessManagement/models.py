@@ -34,6 +34,7 @@ class Mess(models.Model):
     email = models.EmailField(unique=False, blank=True, default='')
     phone = models.CharField(max_length=20, unique=False, blank=True, default='')
     address = models.CharField(max_length=255, blank=True, default='')
+    image = models.ImageField(upload_to='mess_images/', blank=True, null=True)
     map_url = models.URLField(max_length=500, blank=True, default='')
     latitude = models.DecimalField(max_digits=10, decimal_places=7, blank=True, null=True)
     longitude = models.DecimalField(max_digits=10, decimal_places=7, blank=True, null=True)

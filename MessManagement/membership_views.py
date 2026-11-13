@@ -122,6 +122,7 @@ def membership_summary(membership, current_id=None, user=None):
         "membership_id": membership.id,
         "mess_id": membership.mess_id,
         "mess_name": membership.mess.name,
+        "mess_image": mess.image.url if mess.image else None,
         "season_id": membership.season_id,
         "season_name": membership.season.name,
         "season_start_date": membership.season.start_date,
@@ -150,6 +151,7 @@ def access_summary(user, season, membership, current_season_id):
         "membership_id": None,
         "mess_id": season.mess_id,
         "mess_name": season.mess.name,
+        "mess_image": season.mess.image.url if season.mess.image else None,
         "season_id": season.id,
         "season_name": season.name,
         "season_start_date": season.start_date,
@@ -210,7 +212,8 @@ def _active_season_member(manager, membership_id):
 def request_summary(join_request):
     """A join request as its sender sees it; the season is set once it's approved."""
     return {
-        "id": join_request.id, "mess_id": join_request.mess_id, "mess_name": join_request.mess.name, "status": join_request.current_status,
+        "id": join_request.id, "mess_id": join_request.mess_id, "mess_name": join_request.mess.name,
+        "mess_image": join_request.mess.image.url if join_request.mess.image else None, "status": join_request.current_status,
         **season_ref(join_request.season),
         "created_at": join_request.requested_at, "responded_at": join_request.responded_at, "expires_at": join_request.expires_at,
     }
@@ -280,10 +283,10 @@ class PublicMessListView(APIView):
         total = queryset.count()
         last_page = max(1, (total + per_page - 1) // per_page)
         start = (page - 1) * per_page
-        messes = queryset.values('id', 'name', 'address')[start:start + per_page]
+        messes = queryset[start:start + per_page]
 
         return Response({
-            "data": list(messes),
+            "data": [{"id": mess.id, "name": mess.name, "address": mess.address, "image": mess.image.url if mess.image else None} for mess in messes],
             "meta": {"total": total, "current_page": page, "last_page": last_page, "per_page": per_page},
         })
 
@@ -326,7 +329,8 @@ class MembershipStatusView(APIView):
             "join_requests": [request_summary(r) for r in join_requests],
             "invites": [
                 {
-                    "id": i.id, "mess_id": i.mess_id, "mess_name": i.mess.name, "invite_code": i.invite_code, "status": i.current_status,
+                    "id": i.id, "mess_id": i.mess_id, "mess_name": i.mess.name,
+                    "mess_image": i.mess.image.url if i.mess.image else None, "invite_code": i.invite_code, "status": i.current_status,
                     **season_ref(i.season),
                     "invited_by": i.invited_by.full_name if i.invited_by else None,
                     "created_at": i.invited_at, "responded_at": i.responded_at, "expires_at": i.expires_at,
@@ -342,11 +346,12 @@ class CreateMessSerializer(serializers.Serializer):
     address = serializers.CharField(max_length=255, required=False, allow_blank=True, default='')
     email = serializers.EmailField(required=False, allow_blank=True, default='')
     phone = serializers.CharField(max_length=20, required=False, allow_blank=True, default='')
+    image = serializers.ImageField(required=False, allow_null=True)
 
 
 class CreateMessView(APIView):
     """
-    POST /api/v1/user/messes/create  {name, season_name, address?, email?, phone?}
+    POST /api/v1/user/messes/create  {name, season_name, address?, email?, phone?, image?}
 
     Creates the mess, its first season and the creator's membership. The
     creator becomes the mess manager and the new membership becomes current;
@@ -363,7 +368,8 @@ class CreateMessView(APIView):
         with transaction.atomic():
             mess = Mess.objects.create(
                 name=data['name'].strip(), address=data['address'].strip(),
-                email=data['email'], phone=data['phone'].strip(), manager=user,
+                email=data['email'], phone=data['phone'].strip(),
+                image=data.get('image'), manager=user,
             )
             season = MessSeason.objects.create(
                 mess=mess, name=data['season_name'].strip(), start_date=timezone.now().date(),
