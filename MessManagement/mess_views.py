@@ -36,7 +36,7 @@ ROLE_ORDER = {'manager': 0, 'acting_manager': 1, 'member': 2}
 def _person(user):
     if user is None:
         return None
-    return {"user_id": user.id, "name": user.full_name, "email": user.email, "phone": user.phone}
+    return {"user_id": user.id, "name": user.full_name, "email": user.email, "phone": user.phone, "photo": user.photo.url if user.photo else None}
 
 
 def _season_stats(season, mess, member_count):
@@ -154,7 +154,7 @@ class MyMessView(APIView):
             "manager": _person(mess.manager),
             "acting_manager": _person(mess.acting_manager),
             "members": [
-                {"membership_id": m.id, "user_id": m.user_id, "name": m.user.full_name, "role": mess.role_of(m.user_id), "joined_at": m.joined_at}
+                {"membership_id": m.id, "user_id": m.user_id, "name": m.user.full_name, "photo": m.user.photo.url if m.user.photo else None, "role": mess.role_of(m.user_id), "joined_at": m.joined_at}
                 for m in members
             ],
             "stats": stats,
