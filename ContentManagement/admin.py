@@ -21,8 +21,12 @@ class AppSettingAdmin(admin.ModelAdmin):
 
 @admin.register(ContentPage)
 class ContentPageAdmin(admin.ModelAdmin):
-    list_display = ["kind", "language", "title", "updated_at"]
-    list_filter = ["kind", "language"]
+    list_display = ["kind", "language", "title", "is_public", "updated_at"]
+    list_filter = ["kind", "language", "is_public"]
+    list_editable = ["is_public"]
+
+    def view_on_site(self, obj):
+        return f"/{obj.kind}/?lang={obj.language}"
 
 
 @admin.register(Faq)

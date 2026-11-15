@@ -1,3 +1,4 @@
+from django.core.cache import cache
 from rest_framework.test import APITestCase
 
 from AuthManagement.models import User
@@ -8,6 +9,7 @@ class AppContentAPITests(APITestCase):
     """Config, legal pages and FAQs come from Django admin; maintenance mode blocks the API."""
 
     def tearDown(self):
+        cache.clear()
         AppSetting.objects.all().delete()
         AppSetting.current()  # re-cache defaults so the next test starts clean
 
@@ -27,6 +29,8 @@ class AppContentAPITests(APITestCase):
         self.assertEqual(data['update_message'], 'New meal chart!')
         self.assertEqual(data['support_email'], 'help@mess.app')
         self.assertFalse(data['maintenance']['enabled'])
+        self.assertIn('/privacy-policy/', data['privacy_policy_url'])
+        self.assertIn('/terms-and-conditions/', data['terms_and_conditions_url'])
         # Older builds still read it here.
         self.assertEqual(self.client.get('/api/v1/auth/config').data['latest_version'], '1.4.0')
 
@@ -63,3 +67,88 @@ class AppContentAPITests(APITestCase):
         Faq.objects.create(language='en', question='Hidden', answer='c', order=0, is_active=False)
 
         self.assertEqual([f['question'] for f in self.client.get('/api/v1/app/faqs', HTTP_X_LOCALIZATION='bn').data], ['First', 'Second'])
+
+    # -- public feature tests ---------------------------------------------------
+
+    def test_direct_public_api_endpoints_work_without_authentication(self):
+        # /api/v1/app/privacy-policy and /api/v1/app/terms-and-conditions
+        privacy_app = self.client.get('/api/v1/app/privacy-policy')
+        self.assertEqual(privacy_app.status_code, 200)
+        self.assertEqual(privacy_app.data['kind'], 'privacy-policy')
+        self.assertEqual(privacy_app.data['language'], 'en')
+
+        terms_app = self.client.get('/api/v1/app/terms-and-conditions')
+        self.assertEqual(terms_app.status_code, 200)
+        self.assertEqual(terms_app.data['kind'], 'terms-and-conditions')
+
+        # Root-level /api/v1/privacy-policy and /api/v1/terms-and-conditions
+        privacy_api = self.client.get('/api/v1/privacy-policy')
+        self.assertEqual(privacy_api.status_code, 200)
+        self.assertEqual(privacy_api.data['kind'], 'privacy-policy')
+
+        terms_api = self.client.get('/api/v1/terms-and-conditions')
+        self.assertEqual(terms_api.status_code, 200)
+        self.assertEqual(terms_api.data['kind'], 'terms-and-conditions')
+
+    def test_public_web_pages_render_html_for_browsers(self):
+        # Privacy policy HTML
+        for path in ('/privacy-policy/', '/privacy-policy', '/privacy/', '/privacy'):
+            response = self.client.get(path)
+            self.assertEqual(response.status_code, 200)
+            self.assertIn('text/html', response['Content-Type'])
+            self.assertContains(response, 'Privacy policy')
+            self.assertContains(response, 'Mess Pilot')
+            self.assertContains(response, '<h2>Information we collect</h2>')
+            self.assertContains(response, 'Account details')
+
+        # Terms and conditions HTML
+        for path in ('/terms-and-conditions/', '/terms-and-conditions', '/terms/', '/terms'):
+            response = self.client.get(path)
+            self.assertEqual(response.status_code, 200)
+            self.assertIn('text/html', response['Content-Type'])
+            self.assertContains(response, 'Terms and conditions')
+            self.assertContains(response, 'Mess Pilot')
+
+    def test_public_web_pages_support_json_accept_header_and_query_param(self):
+        # Accept: application/json
+        json_resp = self.client.get('/privacy-policy/', HTTP_ACCEPT='application/json')
+        self.assertEqual(json_resp.status_code, 200)
+        self.assertEqual(json_resp.json()['kind'], 'privacy-policy')
+
+        # ?format=json
+        param_resp = self.client.get('/privacy-policy?format=json')
+        self.assertEqual(param_resp.status_code, 200)
+        self.assertEqual(param_resp.json()['kind'], 'privacy-policy')
+
+    def test_is_public_flag_controls_visibility(self):
+        page = ContentPage.objects.get(kind=ContentPage.PRIVACY_POLICY, language='en')
+        page.is_public = False
+        page.save()
+
+        # API returns 404 when not public
+        api_resp = self.client.get('/api/v1/app/privacy-policy')
+        self.assertEqual(api_resp.status_code, 404)
+
+        # Web returns 404 when not public
+        web_resp = self.client.get('/privacy-policy/')
+        self.assertEqual(web_resp.status_code, 404)
+        self.assertContains(web_resp, 'Page Not Available', status_code=404)
+
+        # Re-enable
+        page.is_public = True
+        page.save()
+        self.assertEqual(self.client.get('/api/v1/app/privacy-policy').status_code, 200)
+        self.assertEqual(self.client.get('/privacy-policy/').status_code, 200)
+
+    def test_public_pages_and_api_accessible_during_maintenance_mode(self):
+        self.set(maintenance_mode=True, maintenance_message='Maintenance ongoing')
+
+        # Public web pages should still be 200
+        self.assertEqual(self.client.get('/privacy-policy/').status_code, 200)
+        self.assertEqual(self.client.get('/terms-and-conditions/').status_code, 200)
+
+        # Public API endpoints should still be 200
+        self.assertEqual(self.client.get('/api/v1/app/privacy-policy').status_code, 200)
+        self.assertEqual(self.client.get('/api/v1/app/terms-and-conditions').status_code, 200)
+        self.assertEqual(self.client.get('/api/v1/privacy-policy').status_code, 200)
+        self.assertEqual(self.client.get('/api/v1/terms-and-conditions').status_code, 200)

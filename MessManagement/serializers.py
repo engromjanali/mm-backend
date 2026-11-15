@@ -23,7 +23,7 @@ class MessSerializer(serializers.ModelSerializer):
     class Meta:
         model = Mess
         fields = [
-            'id', 'name', 'email', 'phone', 'address',
+            'id', 'name', 'email', 'phone', 'address', 'image',
             'created_at', 'updated_at',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
@@ -116,6 +116,7 @@ class MessCreationSerializer(serializers.Serializer):
     email = serializers.EmailField()
     phone = serializers.CharField(max_length=20)
     address = serializers.CharField(max_length=255)
+    image = serializers.ImageField(required=False, allow_null=True)
 
     def validate(self, attrs):
         # Users can create multiple messes, so no restriction here.
@@ -131,6 +132,7 @@ class MessCreationSerializer(serializers.Serializer):
                 email=validated_data['email'],
                 phone=validated_data['phone'],
                 address=validated_data['address'],
+                image=validated_data.get('image'),
                 manager=user,
             )
 

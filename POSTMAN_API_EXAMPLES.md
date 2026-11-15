@@ -13,6 +13,18 @@ Use IDs returned by your own requests. Sample IDs and dates below are illustrati
 meal dates must be within a writable season and must not be in the future.
 See [roadmap.md](roadmap.md) for the route/method inventory.
 
+## Public content & legal pages
+
+These endpoints require no authentication.
+
+- `GET {{base_url}}/privacy-policy/` returns the public HTML Privacy Policy page (or JSON with `Accept: application/json` or `?format=json`). Aliases: `/privacy/`, `/privacy-policy`, `/privacy`.
+- `GET {{base_url}}/terms-and-conditions/` returns the public HTML Terms and Conditions page (or JSON with `Accept: application/json` or `?format=json`). Aliases: `/terms/`, `/terms-and-conditions`, `/terms`.
+- `GET {{base_url}}/api/v1/app/privacy-policy` or `GET {{base_url}}/api/v1/privacy-policy` returns JSON.
+- `GET {{base_url}}/api/v1/app/terms-and-conditions` or `GET {{base_url}}/api/v1/terms-and-conditions` returns JSON.
+- `GET {{base_url}}/api/v1/app/config` returns app configuration including `privacy_policy_url` and `terms_and_conditions_url`.
+
+Pass `?lang=bn` or `?lang=ar` (or `X-localization: bn`) to retrieve localized content when published.
+
 ## Authentication
 
 ### Sign in

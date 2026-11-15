@@ -57,10 +57,21 @@ def _season_stats(season, mess, member_count):
 # ---------------------------------------------------------------------------
 
 class MessDetailsUpdateSerializer(serializers.ModelSerializer):
+    remove_image = serializers.BooleanField(required=False, default=False, write_only=True)
+
     class Meta:
         model = Mess
-        fields = ('name', 'address', 'email', 'phone', 'map_url', 'latitude', 'longitude')
+        fields = ('name', 'address', 'email', 'phone', 'image', 'remove_image', 'map_url', 'latitude', 'longitude')
         read_only_fields = ('map_url',)
+
+    def update(self, instance, validated_data):
+        remove_image = validated_data.pop('remove_image', False)
+        new_image = validated_data.get('image')
+        if (remove_image or new_image) and instance.image:
+            instance.image.delete(save=False)
+        if remove_image and not new_image:
+            validated_data['image'] = None
+        return super().update(instance, validated_data)
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
@@ -119,7 +130,7 @@ class MyMessView(APIView):
         membership = context.membership
         my_deposit = signed_amount_summary(Deposit.objects.filter(season=season, performed_by=membership))['net'] if membership else 0
         my_meals = (Meals.objects.filter(mess_season=season, mess_member=membership).aggregate(total=Sum('total_meals'))['total'] or 0) if membership else 0
-        my_remaining = float(my_deposit) - float(my_meals) * stats['meal_rate']
+        my_remaining = round(float(my_deposit) - float(my_meals) * stats['meal_rate'], 2)
 
         return Response({
             **member_stats,
@@ -129,6 +140,7 @@ class MyMessView(APIView):
             "address": mess.address,
             "email": mess.email,
             "phone": mess.phone,
+            "image": mess.image.url if mess.image else None,
             "map_url": mess.map_url,
             "latitude": mess.latitude,
             "longitude": mess.longitude,

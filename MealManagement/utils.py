@@ -112,7 +112,7 @@ def season_meal_rate(season):
     """
     total_meals = Meals.objects.filter(mess_season=season).aggregate(total=Sum('total_meals'))['total'] or Decimal('0')
     total_cost = Cost.objects.filter(season=season).aggregate(total=Sum('amount'))['total'] or Decimal('0')
-    meal_rate = (total_cost / total_meals).quantize(Decimal('0.01')) if total_meals else Decimal('0')
+    meal_rate = (total_cost / total_meals).quantize(Decimal('0.0001')) if total_meals else Decimal('0')
     return meal_rate, total_meals, total_cost
 
 

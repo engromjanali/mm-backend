@@ -82,7 +82,9 @@ class UserProfileSerializer(AliasInputMixin, serializers.ModelSerializer):
         return value
 
     def validate_phone(self, value):
-        value = value.strip()
+        value = (value or "").strip()
+        if not value:
+            return None
         users = User.objects.filter(phone=value)
         if self.instance:
             users = users.exclude(pk=self.instance.pk)
@@ -142,12 +144,15 @@ class SignUpSerializer(AliasInputMixin, serializers.ModelSerializer):
         return value
 
     def validate_phone(self, value):
-        value = value.strip()
+        value = (value or "").strip()
+        if not value:
+            return None
         if User.objects.filter(phone=value).exists():
             raise serializers.ValidationError("A user with this phone already exists.")
         return value
 
     def create(self, validated_data):
+        validated_data.setdefault("phone", None)
         return User.objects.create_user(**validated_data)
 
 
@@ -220,3 +225,13 @@ class ChangePasswordSerializer(AliasInputMixin, serializers.Serializer):
         except DjangoValidationError as exc:
             raise serializers.ValidationError(list(exc.messages)) from exc
         return value
+
+
+class GoogleSignInSerializer(AliasInputMixin, serializers.Serializer):
+    input_aliases = {
+        "idToken": "id_token",
+        "id-token": "id_token",
+        "credential": "id_token",
+        "Credential": "id_token",
+    }
+    id_token = serializers.CharField(trim_whitespace=False)

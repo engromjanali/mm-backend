@@ -38,6 +38,16 @@ class AuthenticationAPITests(APITestCase):
         self.assertEqual(response.data["user"]["email"], "new@example.com")
         self.assertTrue(User.objects.get(email="new@example.com").check_password(self.password))
 
+    def test_signup_without_phone_creates_account(self):
+        response = self.client.post(
+            reverse("auth_management:sign-up"),
+            {"full_name": "No Phone", "email": "nophone@example.com", "password": self.password},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertIsNone(User.objects.get(email="nophone@example.com").phone)
+
     def test_signin_works_with_email_or_phone(self):
         self.create_user()
         for sign_in_type, identifier in (
