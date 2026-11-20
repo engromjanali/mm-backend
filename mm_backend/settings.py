@@ -82,6 +82,7 @@ INSTALLED_APPS = [
     'DepositManagement',
     'ContentManagement',
     'FeedbackManagement',
+    'PollManagement',
 ]
 
 MIDDLEWARE = [
