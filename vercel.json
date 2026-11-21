@@ -1,5 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "regions": ["bom1"],
   "crons": [
     {
       "path": "/api/v1/cron/expire-invites-and-requests",

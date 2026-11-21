@@ -59,6 +59,8 @@ urlpatterns = [
     path('api/v1/admin/', include('CostManagement.admin_urls')),
     path('api/v1/user/', include('MealManagement.user_urls')),
     path('api/v1/admin/', include('MealManagement.admin_urls')),
+    path('api/v1/user/', include('PollManagement.user_urls')),
+    path('api/v1/admin/', include('PollManagement.admin_urls')),
     path('api/v1/user/', include('FeedbackManagement.user_urls')),
     path('api/v1/admin/', include('FeedbackManagement.admin_urls')),
     # Scheduled jobs (Vercel Cron, secret-protected)
