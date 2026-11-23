@@ -48,14 +48,14 @@ GOOGLE_OAUTH_CLIENT_IDS = [
     if client_id.strip()
 ]
 
-ALLOWED_HOSTS = ['localhost', '127.0.0.1', '10.0.2.2', '.vercel.app', '192.168.0.212', '192.168.0.109']
+ALLOWED_HOSTS = ['.trycloudflare.com', 'local-messpilot.goraso.com', 'localhost', '127.0.0.1', '10.0.2.2', '.vercel.app', '192.168.0.212', '192.168.0.109']
 ALLOWED_HOSTS += [
     host.strip()
     for host in os.getenv('DJANGO_ALLOWED_HOSTS', '').split(',')
     if host.strip()
 ]
 
-CSRF_TRUSTED_ORIGINS = ['https://*.vercel.app', "http://localhost:50533",]
+CSRF_TRUSTED_ORIGINS = ['https://*.vercel.app', "http://localhost:50533", "https://local-messpilot.goraso.com",]
 CSRF_TRUSTED_ORIGINS += [
     origin.strip()
     for origin in os.getenv('DJANGO_CSRF_TRUSTED_ORIGINS', '').split(',')

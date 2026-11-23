@@ -8,7 +8,7 @@ from rest_framework.test import APIClient
 from AuthManagement.models import User
 from CostManagement.models import Cost
 from MessManagement.models import Mess, MessMemberShip, MessSeason
-from .models import Meals
+from .models import MealRequestCampaign, MealRequestSelection, Meals
 
 
 class MealApiTests(TestCase):
@@ -383,10 +383,77 @@ class MyMealApiTests(MealTestBase):
         self.assertEqual(mine.data['summary'], {'total_meals': 3.5, 'meal_cost': 350.0, 'days': 1})
         self.assertEqual(mine.data['days'], [{'date': self.DAY, 'breakfast': 1.0, 'lunch': 1.5, 'dinner': 1.0, 'total': 3.5}])
 
+
+class MealRequestApiTests(MealTestBase):
+    """Manager-opened meal requests that members respond to before a deadline."""
+
+    def setUp(self):
+        super().setUp()
+        self.date_value = timezone.localdate() + timedelta(days=1)
+        self.end_at = (timezone.now() + timedelta(days=1)).replace(hour=6, minute=0, second=0, microsecond=0)
+
+    def create_request(self, **overrides):
+        payload = {
+            'date': self.date_value.isoformat(),
+            'title': 'Please choose your meal',
+            'description': 'Tell us what you will eat.',
+            'end_at': self.end_at.isoformat(),
+        }
+        payload.update(overrides)
+        return self.client.post('/api/v1/admin/meal-requests', payload, format='json')
+
+    def test_manager_creates_and_lists_request(self):
+        created = self.create_request()
+        self.assertEqual(created.status_code, 201, created.data)
+        self.assertEqual(created.data['title'], 'Please choose your meal')
+        self.assertEqual(created.data['status'], 'open')
+
+        listing = self.client.get('/api/v1/user/meal-requests')
+        self.assertEqual(listing.status_code, 200, listing.data)
+        self.assertTrue(listing.data['can_manage'])
+        self.assertEqual(len(listing.data['data']), 1)
+        self.assertEqual(listing.data['data'][0]['id'], created.data['id'])
+
+    def test_member_responds_then_withdraws(self):
+        campaign = self.create_request().data
         self.client.force_authenticate(user=self.alice_user)
-        alice = self.client.get('/api/v1/user/meals').data
-        self.assertEqual(alice['summary']['total_meals'], 1.5)
-        self.assertEqual(alice['meal_rate'], 100.0)
+
+        saved = self.client.put(f"/api/v1/user/meal-requests/{campaign['id']}", {'breakfast': 1, 'lunch': 0.5, 'dinner': 0}, format='json')
+        self.assertEqual(saved.status_code, 200, saved.data)
+        self.assertEqual(saved.data['selection']['total'], 1.5)
+
+        row = self.client.get('/api/v1/user/meal-requests').data['data'][0]
+        self.assertEqual(row['response_count'], 1)
+        self.assertEqual(row['my_selection']['total'], 1.5)
+        self.assertFalse(row['can_manage'])
+
+        withdrawn = self.client.put(f"/api/v1/user/meal-requests/{campaign['id']}", {'breakfast': 0, 'lunch': 0, 'dinner': 0}, format='json')
+        self.assertEqual(withdrawn.status_code, 200, withdrawn.data)
+        self.assertIsNone(withdrawn.data['selection'])
+        self.assertFalse(MealRequestSelection.objects.exists())
+
+    def test_plain_member_cannot_create_or_read_admin_list(self):
+        self.client.force_authenticate(user=self.alice_user)
+        self.assertEqual(self.create_request().status_code, 403)
+        self.assertEqual(self.client.get('/api/v1/admin/meal-requests').status_code, 403)
+
+    def test_selection_rejected_after_end_time(self):
+        campaign = self.create_request().data
+        MealRequestCampaign.objects.filter(pk=campaign['id']).update(closed_at=timezone.now())
+        self.client.force_authenticate(user=self.alice_user)
+        response = self.client.put(f"/api/v1/user/meal-requests/{campaign['id']}", {'lunch': 1}, format='json')
+        self.assertEqual(response.status_code, 409, response.data)
+
+    def test_create_validates_end_time_and_selection_counts(self):
+        self.assertEqual(self.create_request(end_at='2000-01-01T06:00:00').status_code, 400)
+        campaign = self.create_request().data
+        self.client.force_authenticate(user=self.alice_user)
+        bad = self.client.put(f"/api/v1/user/meal-requests/{campaign['id']}", {'lunch': 0.25}, format='json')
+        self.assertEqual(bad.status_code, 400, bad.data)
+
+
+class MyMealEdgeApiTests(MealTestBase):
+    """Edge cases for the member's own GET /api/v1/user/meals."""
 
     def test_empty_season_has_zero_rate(self):
         data = self.client.get('/api/v1/user/meals').data

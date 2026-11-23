@@ -1,7 +1,7 @@
 from rest_framework import serializers
 
 from MessManagement.models import MessMemberShip
-from .models import Meals
+from .models import MealRequestCampaign, Meals
 from .utils import DATE_INPUT_FORMATS, DATE_OUTPUT_FORMAT, validate_date_in_season, validate_meal_count
 
 
@@ -168,3 +168,37 @@ class AdminMealBulkSerializer(serializers.Serializer):
     """
     date = serializers.DateField(input_formats=DATE_INPUT_FORMATS)
     meals = serializers.ListField(allow_empty=False)
+
+
+class MealRequestCampaignWriteSerializer(serializers.ModelSerializer):
+    """Manager create payload: the meal date, title, deadline and notes."""
+
+    date = serializers.DateField(input_formats=DATE_INPUT_FORMATS, format=DATE_OUTPUT_FORMAT)
+    end_at = serializers.DateTimeField()
+
+    class Meta:
+        model = MealRequestCampaign
+        fields = ['date', 'title', 'description', 'end_at']
+
+    def validate_date(self, value):
+        return validate_date_in_season(value, self.context['season'])
+
+    def validate(self, attrs):
+        from zoneinfo import ZoneInfo
+
+        from django.conf import settings
+        from django.utils import timezone
+
+        end_at = attrs['end_at']
+        if timezone.is_naive(end_at):
+            end_at = timezone.make_aware(end_at, ZoneInfo(settings.MESS_TIME_ZONE))
+            attrs['end_at'] = end_at
+        if end_at <= timezone.now():
+            raise serializers.ValidationError({'end_at': 'The end time must be in the future.'})
+        if end_at.date() < attrs['date']:
+            raise serializers.ValidationError({'end_at': 'The end time cannot be before the meal date.'})
+        return attrs
+
+
+class MealRequestSelectionWriteSerializer(AdminMealCountsSerializer):
+    """A member's meal counts for one request (all optional, default 0)."""

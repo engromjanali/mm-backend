@@ -1,21 +1,23 @@
 from decimal import Decimal
 
 from django.db import IntegrityError, transaction
-from django.db.models import Q, Sum
+from django.db.models import Prefetch, Q, Sum
 from rest_framework import permissions, status
-from rest_framework.exceptions import NotFound, ValidationError
+from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from MessManagement.membership_views import get_managed_membership
+from MessManagement.membership_views import MANAGER_ROLES, get_managed_membership
 from MessManagement.models import MessMemberShip
 from MessManagement.utils import get_current_access, get_verified_membership_and_season
-from .models import Meals
+from .models import MealRequestCampaign, MealRequestSelection, Meals
 from .serializers import (
     AdminMealBulkSerializer,
     AdminMealItemSerializer,
     AdminMealKeySerializer,
     AdminMealUpdateSerializer,
+    MealRequestCampaignWriteSerializer,
+    MealRequestSelectionWriteSerializer,
     MealsSerializer,
     MealWriteSerializer,
 )
@@ -372,6 +374,112 @@ class MyMealListView(APIView):
         })
 
 
+def _is_open_request(campaign):
+    return not campaign.is_closed
+
+
+def _selection_json(selection):
+    return {
+        'breakfast': float(selection.breakfast),
+        'lunch': float(selection.lunch),
+        'dinner': float(selection.dinner),
+        'total': float(selection.total_meals),
+    }
+
+
+def _meal_request_json(campaign, membership, eligible, can_manage):
+    selections = list(campaign.selections.all())
+    my_selection = None
+    if membership is not None:
+        my_selection = next((item for item in selections if item.mess_member_id == membership.id), None)
+    is_open = _is_open_request(campaign)
+    can_respond = is_open and membership is not None and _is_active(membership)
+    return {
+        'id': campaign.id,
+        'date': campaign.date.isoformat(),
+        'title': campaign.title,
+        'description': campaign.description,
+        'end_at': campaign.end_at.isoformat(),
+        'status': campaign.status,
+        'is_open': is_open,
+        'can_respond': can_respond,
+        'can_manage': can_manage,
+        'response_count': len(selections),
+        'eligible_member_count': eligible,
+        'totals': {
+            'breakfast': float(sum((item.breakfast for item in selections), Decimal('0'))),
+            'lunch': float(sum((item.lunch for item in selections), Decimal('0'))),
+            'dinner': float(sum((item.dinner for item in selections), Decimal('0'))),
+        },
+        'my_selection': _selection_json(my_selection) if my_selection else None,
+    }
+
+
+def _meal_request_list_payload(context, can_manage):
+    membership = context.membership if context.membership is not None and _is_active(context.membership) else None
+    eligible = MessMemberShip.objects.filter(season=context.season, status='active', left_at__isnull=True).count()
+    campaigns = list(
+        MealRequestCampaign.objects
+        .filter(mess_season=context.season)
+        .prefetch_related(Prefetch('selections', queryset=MealRequestSelection.objects.select_related('mess_member')))
+    )
+    open_campaigns = [item for item in campaigns if not item.is_closed]
+    closed_campaigns = [item for item in campaigns if item.is_closed]
+    open_campaigns.sort(key=lambda item: (item.date, item.end_at, item.id))
+    closed_campaigns.sort(key=lambda item: (item.date, item.end_at, item.id), reverse=True)
+    return {
+        'can_manage': can_manage,
+        'data': [_meal_request_json(item, membership, eligible, can_manage) for item in open_campaigns + closed_campaigns],
+    }
+
+
+class MealRequestListView(APIView):
+    """GET /api/v1/user/meal-requests — requests for the caller's season."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        context = get_current_access(request.user)
+        if not context:
+            raise PermissionDenied("You are not connected to an active mess.")
+        return Response(_meal_request_list_payload(context, context.role in MANAGER_ROLES))
+
+
+class MealRequestSelectionView(APIView):
+    """PUT /api/v1/user/meal-requests/<id> — save or withdraw your meal choice."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def put(self, request, pk):
+        context = get_current_access(request.user)
+        if not context:
+            raise PermissionDenied("You are not connected to an active mess.")
+        membership = context.membership
+        if not membership or not _is_active(membership):
+            raise PermissionDenied("Only active members can respond to a meal request.")
+
+        campaign = MealRequestCampaign.objects.filter(pk=pk, mess_season=context.season).first()
+        if campaign is None:
+            raise NotFound("Meal request not found in your current season.")
+        if campaign.is_closed:
+            raise MealConflict("This meal request is closed.")
+
+        serializer = MealRequestSelectionWriteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        counts = {slot: serializer.validated_data.get(slot, Decimal('0')) for slot in MEAL_SLOTS}
+
+        with transaction.atomic():
+            selection = MealRequestSelection.objects.select_for_update().filter(request=campaign, mess_member=membership).first()
+            if not any(counts.values()):
+                if selection is not None:
+                    selection.delete()
+                return Response({'id': campaign.id, 'selection': None})
+            selection, _ = MealRequestSelection.objects.update_or_create(
+                request=campaign,
+                mess_member=membership,
+                defaults=counts,
+            )
+        return Response({'id': campaign.id, 'selection': _selection_json(selection)})
+
+
 # ---------------------------------------------------------------------------
 # Admin endpoints  (/api/v1/admin/...)  — manager / acting manager only
 # ---------------------------------------------------------------------------
@@ -456,6 +564,30 @@ def _admin_meal_payload(season, mutation=None, message=None):
     if message:
         payload["message"] = message
     return payload
+
+
+class AdminMealRequestsView(APIView):
+    """
+    GET  /api/v1/admin/meal-requests — every request with its responses.
+    POST /api/v1/admin/meal-requests — open a new request for the season.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        manager = get_managed_membership(request.user)
+        return Response(_meal_request_list_payload(manager, True))
+
+    def post(self, request):
+        manager = get_managed_membership(request.user)
+        serializer = MealRequestCampaignWriteSerializer(data=request.data, context={'season': manager.season})
+        serializer.is_valid(raise_exception=True)
+        campaign = MealRequestCampaign.objects.create(
+            mess_season=manager.season,
+            created_by=request.user,
+            **serializer.validated_data,
+        )
+        eligible = MessMemberShip.objects.filter(season=manager.season, status='active', left_at__isnull=True).count()
+        return Response(_meal_request_json(campaign, None, eligible, True), status=status.HTTP_201_CREATED)
 
 
 class AdminMealView(APIView):
